@@ -15,6 +15,12 @@ SHIFT는 공용차를 배정받은 직원이 현대차의 Pleos Connect 차량 �
 
 현재는 기획 단계입니다. Word 초안에는 작품 소개 본문이 들어 있습니다. 참가자 정보, 팀명, 전원 동의·서명과 최종 참고자료 링크는 제출 전에 작성합니다.
 
+## 디자인 초안
+
+[첫 디자인 콘셉트와 화면 설명](docs/design/README.md) · [시안 PNG](docs/design/shift-concept-v1.png) · [생성 프롬프트](docs/design/shift-concept-v1.prompt.txt)
+
+![SHIFT 차량 업무 홈과 휴대폰 연결 승인 시안](docs/design/shift-concept-v1.png)
+
 ## 개발 작업 위치
 
 [rlatmddn0211/SHIFT](https://github.com/rlatmddn0211/SHIFT)의 `app/`에서 차량 앱을 개발합니다. Pleos Connect Emulator 2.1.0의 기본 AVD 프로필은 2560 × 1440 px, 160 dpi, API 34입니다. 실제 시험한 앱 윈도우 규격과 실행 절차는 구현 후 이 README에 기록합니다. [공식 에뮬레이터 가이드](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)
