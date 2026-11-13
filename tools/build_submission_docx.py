@@ -91,6 +91,10 @@ def build(template: Path, output: Path) -> None:
                     if run_properties is not None
                     else etree.Element(f"{{{W}}}rPr")
                 )
+                # Placeholder highlighting is an editing cue in the template.
+                highlight = props.find("w:highlight", NS)
+                if highlight is not None:
+                    props.remove(highlight)
                 if heading:
                     etree.SubElement(props, f"{{{W}}}b")
                 if len(props):
