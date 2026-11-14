@@ -1,6 +1,8 @@
 # SHIFT 업무·개인 설정
 
-`codex/pleos-screen-dev`의 로컬 승인 서버에서 차량 QR로 직원 A 또는 B에 로그인하면 모바일 승인 완료 화면의 **업무·개인 설정 열기**로 들어갈 수 있습니다. 좌석 높이와 앞뒤 위치, 브리핑에 포함할 일정·메일, 차량에서 볼 노트를 선택합니다. 새 방문 메모는 같은 브라우저의 **내 메모 열기**에서 확인합니다.
+`codex/pleos-screen-dev`의 로컬 승인 서버에서 차량 QR로 직원 A 또는 B에 로그인하면 모바일 승인 완료 화면의 **업무·개인 설정 열기**로 들어갈 수 있습니다. **내 차량 업무 설정**에서 좌석 높이와 앞뒤 위치, 브리핑에 포함할 일정·메일, 차량에서 볼 노트를 선택합니다. 새 방문 메모는 같은 브라우저의 **내 방문 메모 열기**에서 확인합니다. [Figma 시연 흐름](https://www.figma.com/proto/yICJ7aqxqub9JIPyEZX2BC/?page-id=11%3A528&node-id=11-887)
+
+[모바일 업무 설정](images/shift-v12-mobile-profile.png) · [Microsoft 365 권한 선택](images/shift-v12-mobile-consent.png) · [저장된 시연 메모](images/shift-v12-mobile-note.png)
 
 ## 로컬 시연
 
@@ -24,7 +26,7 @@
 3. **업무·개인 설정**에서 표시할 메일과 노트를 선택합니다. 업무 화면은 한국 시간 기준 당일 일정과 최근 일주일의 중요·미확인 메일 후보를 제공합니다. Outlook에서 주소와 좌표를 받은 일정만 바로 목적지 후보로 사용합니다. 다시 불러올 때 일정의 장소나 시간이 변하면 앞서 조회한 결과와 대조해 변경 정보를 표시합니다.
 4. 새 방문 메모는 기본 OneNote 노트북의 **SHIFT 방문 메모** 섹션에 추가합니다. `SHIFT_ONENOTE_SECTION`으로 섹션 이름을 지정할 수 있습니다. [OneNote 페이지 저장](https://learn.microsoft.com/en-us/graph/onenote-create-page)
 
-현재 확인 범위는 로컬 시연과 테스트가 모사한 Microsoft 인증·Graph 응답입니다. 실제 Outlook과 OneNote 연동 시험에는 권한을 승인할 수 있는 Microsoft 365 시험 계정과 Entra 앱 등록이 필요합니다. `npm --prefix server test`로 프로필 보관, 사용자별 데이터 분리, 메모 재시도, Microsoft 인증 상태 검사를 재현할 수 있습니다.
+현재 확인 범위는 로컬 시연과 테스트가 모사한 Microsoft 인증·Graph 응답입니다. 실제 Outlook과 OneNote 연동 시험에는 권한을 승인할 수 있는 Microsoft 365 시험 계정과 Entra 앱 등록이 필요합니다. 390px 모바일 브라우저에서 A의 시트 설정과 메모를 저장하고, B의 QR 승인으로 A의 차량 세션이 종료되는 것을 확인했습니다. B의 화면에는 B의 설정과 메모만 표시됐으며, 서버를 다시 시작한 뒤 A의 설정과 메모를 복원했습니다. `npm --prefix server test`로 프로필 보관, 사용자별 데이터 분리, 메모 재시도, Microsoft 인증 상태 검사를 재현할 수 있습니다.
 
 ## AI 브리핑 제공자
 
