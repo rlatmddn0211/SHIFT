@@ -114,6 +114,11 @@ internal class PleosPlatform(
         else callback(PleosActionResult(false, "주차가 확인된 뒤 목적지를 전송할 수 있어요."))
     }
 
+    fun confirmNavigation(destination: PleosDestination, callback: (PleosActionResult) -> Unit) {
+        if (parked) navigation.confirmDestination(destination, callback)
+        else callback(PleosActionResult(false, "주차가 확인된 뒤 목적지를 확인할 수 있어요."))
+    }
+
     fun readSeat(callback: (Result<PleosSeatState>) -> Unit) =
         vehicle.readSeat(callback)
 

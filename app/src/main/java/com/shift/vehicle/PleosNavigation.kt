@@ -14,7 +14,17 @@ internal class PleosNavigation(
 ) {
     private var pending: RouteRequest? = null
 
-    fun navigate(destination: PleosDestination, callback: (PleosActionResult) -> Unit) {
+    fun navigate(destination: PleosDestination, callback: (PleosActionResult) -> Unit) =
+        open(destination, checkOnly = false, callback)
+
+    fun confirmDestination(destination: PleosDestination, callback: (PleosActionResult) -> Unit) =
+        open(destination, checkOnly = true, callback)
+
+    private fun open(
+        destination: PleosDestination,
+        checkOnly: Boolean,
+        callback: (PleosActionResult) -> Unit,
+    ) {
         if (pending != null) {
             callback(PleosActionResult(false, "이전 내비게이션 요청을 확인하고 있어요."))
             return
@@ -27,7 +37,7 @@ internal class PleosNavigation(
             return
         }
         try {
-            val request = RouteRequest(destination, callback)
+            val request = RouteRequest(destination, checkOnly, callback)
             pending = request
             request.start()
         } catch (_: RuntimeException) {
@@ -44,30 +54,29 @@ internal class PleosNavigation(
 
     private inner class RouteRequest(
         private val destination: PleosDestination,
+        private val checkOnly: Boolean,
         private val callback: (PleosActionResult) -> Unit,
     ) {
         private val helper = NaviHelper(context)
         private var routeSent = false
         private var verifying = false
-        private val timeout = Runnable { finish(false, "Pleos에서 경로 탐색 결과를 확인하지 못했어요.") }
+        private val timeout = Runnable { finish(false, "Pleos에서 요청한 목적지를 확인하지 못했어요.") }
         private val listener = object : NaviHelperEventListener {
             override fun onRoutingCompleted() {
                 main.post {
                     if (pending !== this@RouteRequest || !routeSent) return@post
-                    verifying = true
-                    runCatching { helper.getDestinationInfo() }.onFailure {
-                        finish(false, "Pleos에서 설정한 목적지를 확인하지 못했어요.")
-                    }
+                    verify()
                 }
             }
 
             override fun onDestinationInfo(destinationInfo: DestinationInfo) {
                 main.post {
-                    if (pending === this@RouteRequest && verifying &&
-                        destinationInfo.poiId == destination.poiId &&
-                        destinationInfo.poiSubId == destination.poiSubId
-                    ) {
-                        finish(true, "Pleos 내비게이션에서 경로를 확인했어요.")
+                    if (pending !== this@RouteRequest || !verifying) return@post
+                    if (destinationInfo.poiId == destination.poiId &&
+                        destinationInfo.poiSubId == destination.poiSubId) {
+                        finish(true, "Pleos 내비게이션에서 요청한 목적지를 확인했어요.")
+                    } else if (checkOnly) {
+                        finish(false, "Pleos에서 현재 안내 중인 목적지가 요청과 일치하지 않아요.")
                     }
                 }
             }
@@ -78,7 +87,7 @@ internal class PleosNavigation(
         }
 
         fun start() {
-            main.postDelayed(timeout, 20_000)
+            main.postDelayed(timeout, if (checkOnly) 6_000 else 20_000)
             helper.initialize(
                 {
                     main.post { send() }
@@ -90,10 +99,14 @@ internal class PleosNavigation(
         }
 
         private fun send() {
-            if (pending !== this || routeSent) return
-            routeSent = true
+            if (pending !== this || routeSent || verifying) return
             runCatching {
                 helper.addListener(listener)
+                if (checkOnly) {
+                    verify()
+                    return
+                }
+                routeSent = true
                 helper.requestRoute(
                     RouteInfo(
                         latitude = destination.latitude,
@@ -105,6 +118,13 @@ internal class PleosNavigation(
                     ),
                 )
             }.onFailure { finish(false, "Pleos에 경로를 요청하지 못했어요.") }
+        }
+
+        private fun verify() {
+            verifying = true
+            runCatching { helper.getDestinationInfo() }.onFailure {
+                finish(false, "Pleos에서 설정한 목적지를 확인하지 못했어요.")
+            }
         }
 
         private fun finish(success: Boolean, message: String) {
