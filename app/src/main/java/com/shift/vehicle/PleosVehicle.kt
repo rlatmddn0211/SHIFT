@@ -177,6 +177,7 @@ internal class PleosVehicle(
         private var activeAxis: Axis? = null
         private var pulse = 0
         private var stopPulse: Runnable? = null
+        private var feedbackPoll: Runnable? = null
         private val timeout = Runnable { finish(false, "좌석 목표 위치에 도달했는지 확인하지 못했어요.") }
 
         fun start() {
@@ -214,8 +215,13 @@ internal class PleosVehicle(
             }
             canMove(seat, axis) { supported ->
                 if (canContinue()) {
-                    if (supported) moveToward(axis, target, bounds, previous = null, next)
-                    else finish(false, "차량에서 이 좌석 방향의 조절을 지원하지 않아요.")
+                    if (supported) {
+                        position(seat, axis) { current ->
+                            if (canContinue()) moveToward(axis, target, bounds, current, next)
+                        }
+                    } else {
+                        finish(false, "차량에서 이 좌석 방향의 조절을 지원하지 않아요.")
+                    }
                 }
             }
         }
@@ -224,30 +230,57 @@ internal class PleosVehicle(
             axis: Axis,
             target: Int,
             bounds: PleosSeatAxis,
-            previous: Int?,
+            current: Int?,
             next: () -> Unit,
         ) {
-            position(seat, axis) { current ->
-                if (!canContinue()) return@position
-                when {
-                    current == null || current !in bounds.minimum..bounds.maximum ->
-                        finish(false, "현재 좌석 위치를 확인할 수 없어요.")
-                    abs(current.toLong() - target) <= 1L -> next()
-                    previous != null && abs(current.toLong() - target) >= abs(previous.toLong() - target) ->
-                        finish(false, "좌석이 목표 방향으로 움직이지 않아 조절을 중단했어요.")
-                    else -> {
-                        confirmParked gearCheck@{ confirmed ->
-                            if (seatRequest !== this) return@gearCheck
-                            if (!confirmed || vehicle !== sdk || !canContinue()) {
-                                finish(false, "주차 상태를 다시 확인해 주세요.")
-                                return@gearCheck
-                            }
-                            val direction = if (current < target) MoveControl.FORWARD else MoveControl.BACKWARD
-                            movePulse(axis, direction) { moveToward(axis, target, bounds, current, next) }
-                        }
+            if (current == null || current !in bounds.minimum..bounds.maximum) {
+                finish(false, "현재 좌석 위치를 확인할 수 없어요.")
+                return
+            }
+            if (abs(current.toLong() - target) <= 1L) {
+                next()
+                return
+            }
+            confirmParked gearCheck@{ confirmed ->
+                if (seatRequest !== this) return@gearCheck
+                if (!confirmed || vehicle !== sdk || !canContinue()) {
+                    finish(false, "주차 상태를 다시 확인해 주세요.")
+                    return@gearCheck
+                }
+                val direction = if (current < target) MoveControl.FORWARD else MoveControl.BACKWARD
+                movePulse(axis, direction) {
+                    waitForMovement(axis, target, bounds, current, 5) { updated ->
+                        moveToward(axis, target, bounds, updated, next)
                     }
                 }
             }
+        }
+
+        private fun waitForMovement(
+            axis: Axis,
+            target: Int,
+            bounds: PleosSeatAxis,
+            before: Int,
+            attempts: Int,
+            onMovement: (Int) -> Unit,
+        ) {
+            // A STOP acknowledgement can arrive before the position event.
+            val read = Runnable {
+                if (!canContinue()) return@Runnable
+                position(seat, axis) { current ->
+                    if (!canContinue()) return@position
+                    when {
+                        current == null || current !in bounds.minimum..bounds.maximum ->
+                            finish(false, "현재 좌석 위치를 확인할 수 없어요.")
+                        abs(current.toLong() - target) < abs(before.toLong() - target) -> onMovement(current)
+                        current != before || attempts == 1 ->
+                            finish(false, "좌석이 목표 방향으로 움직이지 않아 조절을 중단했어요.")
+                        else -> waitForMovement(axis, target, bounds, before, attempts - 1, onMovement)
+                    }
+                }
+            }
+            feedbackPoll = read
+            main.postDelayed(read, 150)
         }
 
         private fun movePulse(axis: Axis, direction: MoveControl, next: () -> Unit) {
@@ -288,6 +321,7 @@ internal class PleosVehicle(
         fun close() {
             main.removeCallbacks(timeout)
             stopPulse?.let(main::removeCallbacks)
+            feedbackPoll?.let(main::removeCallbacks)
             activeAxis?.let { command(seat, it, MoveControl.STOP) {} }
             activeAxis = null
         }
