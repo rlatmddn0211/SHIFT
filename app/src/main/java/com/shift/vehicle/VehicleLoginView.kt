@@ -26,10 +26,18 @@ import kotlin.math.roundToInt
 internal class VehicleLoginView(
     context: Context,
     private val onRetry: () -> Unit,
+    private val onCancel: () -> Unit = {},
 ) : ScrollView(context) {
+    enum class Purpose(val title: String, val instructions: String?) {
+        LOGIN("공용차 로그인", "휴대폰으로 QR을 스캔한 뒤 PIN을 입력해 주세요."),
+        HANDOVER("운전자 교대", "다음 운전자가 QR을 스캔하고 PIN으로 승인하세요."),
+        LOGOUT("QR 로그아웃", "현재 운전자의 휴대폰으로 스캔하고 로그아웃을 승인하세요."),
+        WORKSPACE("오늘 방문 업무", null),
+    }
+
     private sealed interface LoginState {
-        data object Loading : LoginState
-        data class Waiting(val qr: Bitmap, val pin: String) : LoginState
+        data class Loading(val message: String) : LoginState
+        data class Waiting(val qr: Bitmap, val pin: String?) : LoginState
         data class Error(val message: String, val retryable: Boolean) : LoginState
     }
 
@@ -37,7 +45,9 @@ internal class VehicleLoginView(
     private val notoRegular = font("noto_sans_kr.ttf", 400)
     private val notoMedium = font("noto_sans_kr.ttf", 500)
     private val notoBold = font("noto_sans_kr.ttf", 700)
-    private var state: LoginState = LoginState.Loading
+    private var purpose = Purpose.LOGIN
+    private var canCancel = false
+    private var state: LoginState = LoginState.Loading("로그인 요청을 준비하고 있습니다.")
     private var lastWidth = 0
     private var wide = false
     private var scale = 1f
@@ -50,11 +60,17 @@ internal class VehicleLoginView(
         setBackgroundColor(NAVY)
     }
 
-    fun showLoading() = render(LoginState.Loading)
+    fun showLoading(
+        purpose: Purpose = Purpose.LOGIN,
+        message: String = "로그인 요청을 준비하고 있습니다.",
+        cancelable: Boolean = false,
+    ) = render(purpose, LoginState.Loading(message), cancelable)
 
-    fun showRequest(qr: Bitmap, pin: String) = render(LoginState.Waiting(qr, pin))
+    fun showRequest(qr: Bitmap, pin: String?, purpose: Purpose = Purpose.LOGIN) =
+        render(purpose, LoginState.Waiting(qr, pin), purpose != Purpose.LOGIN)
 
-    fun showError(message: String, retryable: Boolean = true) = render(LoginState.Error(message, retryable))
+    fun showError(message: String, cancelable: Boolean = false) =
+        render(purpose, LoginState.Error(message, retryable = true), cancelable)
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
@@ -70,9 +86,11 @@ internal class VehicleLoginView(
         super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
 
-    private fun render(next: LoginState) {
-        if (state == next) return
+    private fun render(nextPurpose: Purpose, next: LoginState, cancelable: Boolean) {
+        if (purpose == nextPurpose && state == next && canCancel == cancelable) return
+        purpose = nextPurpose
         state = next
+        canCancel = cancelable
         if (lastWidth > 0) rebuild()
     }
 
@@ -81,16 +99,21 @@ internal class VehicleLoginView(
         val inset = px(if (wide) 64 else 48)
         body.setPadding(inset, inset, inset, inset)
         body.append(label("SHIFT", 34, astaBold, SKY_BLUE))
-        body.append(label("공용차 로그인", 60, notoBold).apply { isAccessibilityHeading = true }, top = 14)
-        body.append(label("휴대폰으로 QR을 스캔한 뒤 PIN을 입력해 주세요.", 30, notoRegular, MUTED), top = 18)
+        body.append(label(purpose.title, 60, notoBold).apply { isAccessibilityHeading = true }, top = 14)
+        purpose.instructions?.let { body.append(label(it, 30, notoRegular, MUTED), top = 18) }
 
         when (val current = state) {
-            LoginState.Loading -> body.append(messageCard("로그인 요청을 준비하고 있습니다.", loading = true), top = 44)
+            is LoginState.Loading -> body.append(messageCard(current.message, loading = true), top = 44)
             is LoginState.Waiting -> {
                 body.append(requestCard(current), top = 44)
                 body.append(statusLine(), top = 28)
             }
             is LoginState.Error -> body.append(messageCard(current.message, retryable = current.retryable), top = 44)
+        }
+        if (canCancel) {
+            body.addView(actionButton("취소", ::cancel), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
+                topMargin = px(24)
+            })
         }
 
         removeAllViews()
@@ -100,11 +123,14 @@ internal class VehicleLoginView(
     private fun requestCard(waiting: LoginState.Waiting): LinearLayout {
         val vehicleAndPin = column().apply {
             append(vehicleName())
-            append(label("일회용 PIN", 28, notoMedium, SKY_BLUE), top = if (wide) 36 else 22)
-            append(label(waiting.pin, 68, astaBold).apply {
-                letterSpacing = 0.15f
-                contentDescription = waiting.pin.toList().joinToString(" ")
-            }, top = 8)
+            val pin = waiting.pin
+            if (pin != null) {
+                append(label("일회용 PIN", 28, notoMedium, SKY_BLUE), top = if (wide) 36 else 22)
+                append(label(pin, 68, astaBold).apply {
+                    letterSpacing = 0.15f
+                    contentDescription = pin.toList().joinToString(" ")
+                }, top = 8)
+            }
         }
         val size = px(if (wide) 352 else 292)
         val qr = ImageView(context).apply {
@@ -113,7 +139,7 @@ internal class VehicleLoginView(
             background = rounded(Color.WHITE, 20)
             val inset = px(14)
             setPadding(inset, inset, inset, inset)
-            contentDescription = "로그인 QR 코드"
+            contentDescription = if (purpose == Purpose.LOGOUT) "로그아웃 QR 코드" else "로그인 QR 코드"
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
 
@@ -145,7 +171,7 @@ internal class VehicleLoginView(
     }
 
     private fun messageCard(message: String, loading: Boolean = false, retryable: Boolean = false) = card().apply {
-        append(vehicleName())
+        if (purpose != Purpose.WORKSPACE) append(vehicleName())
         if (loading) {
             addView(ProgressBar(context).apply {
                 indeterminateTintList = ColorStateList.valueOf(SKY_BLUE)
@@ -156,12 +182,16 @@ internal class VehicleLoginView(
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }, top = 24)
         if (retryable) {
-            addView(retryButton(), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply { topMargin = px(30) })
+            addView(actionButton("다시 시도", onRetry), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
+                topMargin = px(30)
+            })
         }
     }
 
-    private fun retryButton() = Button(context).apply {
-        text = "다시 시도"
+    private fun cancel() = onCancel()
+
+    private fun actionButton(label: String, action: () -> Unit) = Button(context).apply {
+        text = label
         typeface = notoBold
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 30 * scale)
         setTextColor(NAVY)
@@ -177,7 +207,7 @@ internal class VehicleLoginView(
             addState(intArrayOf(), rounded(SKY_BLUE, 20))
         }
         background = RippleDrawable(ColorStateList.valueOf(0x260B1728), backgroundStates, rounded(Color.WHITE, 20))
-        setOnClickListener { onRetry() }
+        setOnClickListener { action() }
     }
 
     private fun vehicleName() = label("현대 공용차 01", 40, notoBold)
