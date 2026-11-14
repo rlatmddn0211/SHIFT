@@ -12,6 +12,7 @@ SHIFT는 공용차를 배정받은 직원이 현대차의 Pleos Connect 차량 �
 - [결정 기록](docs/DECISIONS.md)
 - [공모전 작품 소개 초안](docs/SUBMISSION_DRAFT.md)
 - [공식 접수양식에 본문을 넣은 Word 초안](docs/SHIFT_application_draft.docx)
+- [Pleos 차량 화면 디자인·개발 가이드](docs/PLEOS_SCREEN_DESIGN.md)
 
 현재는 기획 단계입니다. Word 초안에는 작품 소개 본문이 들어 있습니다. 참가자 정보, 팀명, 전원 동의·서명과 최종 참고자료 링크는 제출 전에 작성합니다.
 
