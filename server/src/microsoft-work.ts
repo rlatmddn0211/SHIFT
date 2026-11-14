@@ -138,8 +138,9 @@ export function createMicrosoftWork(publicOrigin: string, fetcher: Fetcher, now:
         return { id, name: text(me.displayName, 40) || "업무 계정" };
     }
 
-    async function load(identity: string, permissions: WorkPermissions): Promise<WorkData> {
+    async function load(identity: string, permissions: WorkPermissions, assertCurrent?: () => void): Promise<WorkData> {
         const access = await accessFor(identity);
+        assertCurrent?.();
         const start = Math.floor((now() + SEOUL_OFFSET) / DAY) * DAY - SEOUL_OFFSET;
         const [events, messages, notes] = await Promise.all([
             permissions.calendar ? graph<{ value: GraphEvent[] }>(access, query("/me/calendarView", {
@@ -153,6 +154,7 @@ export function createMicrosoftWork(publicOrigin: string, fetcher: Fetcher, now:
             })) : { value: [] },
             permissions.notes ? graph<{ value: GraphNote[] }>(access, "/me/onenote/pages?$top=20") : { value: [] },
         ]);
+        assertCurrent?.();
 
         const eventsForToday = events.value.filter(event => !event.isCancelled && !event.isAllDay).map(event => {
                 const location = event.location;
@@ -169,7 +171,7 @@ export function createMicrosoftWork(publicOrigin: string, fetcher: Fetcher, now:
         const visits = eventsForToday.map(visit => {
             const old = known.get(visit.id);
             if (!old) return visit;
-            const changedFrom = old.address && old.address !== visit.address ? old.address : old.changedFrom;
+            const changedFrom = visit.address ? (old.address && old.address !== visit.address ? old.address : old.changedFrom) : undefined;
             const previousTime = old.time && old.time !== visit.time ? old.time : old.previousTime;
             const evidence = changedFrom || previousTime ? "Outlook 일정 변경 확인" : undefined;
             return { ...visit, changedFrom, previousTime, evidence };
@@ -186,8 +188,9 @@ export function createMicrosoftWork(publicOrigin: string, fetcher: Fetcher, now:
         };
     }
 
-    async function saveNote(identity: string, title: string, content: string): Promise<Note> {
+    async function saveNote(identity: string, title: string, content: string, assertCurrent: () => void): Promise<Note> {
         const access = await accessFor(identity);
+        assertCurrent();
         const section = process.env.SHIFT_ONENOTE_SECTION ?? "SHIFT 방문 메모";
         const result = await graph<GraphNote>(access, query("/me/onenote/pages", { sectionName: section }), {
             method: "POST", headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -196,8 +199,9 @@ export function createMicrosoftWork(publicOrigin: string, fetcher: Fetcher, now:
         return { id: result.id, title: text(result.title, 150) || title, sourceUrl: safeLink(result.links?.oneNoteWebUrl?.href) };
     }
 
-    async function notePage(identity: string, id: string): Promise<string> {
+    async function notePage(identity: string, id: string, assertCurrent: () => void): Promise<string> {
         const access = await accessFor(identity);
+        assertCurrent();
         const url = `${GRAPH}/me/onenote/pages/${encodeURIComponent(id)}/content`;
         const response = await fetcher(url, { headers: { Authorization: `Bearer ${access}` }, redirect: "error", signal: AbortSignal.timeout(8_000) });
         if (!response.ok) throw new ProviderError(response.status);

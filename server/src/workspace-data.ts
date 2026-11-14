@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { text, type Note, type Visit, type WorkData, type WorkPermissions } from "./microsoft-work.ts";
+import { text, type Message, type Note, type Visit, type WorkData, type WorkPermissions } from "./microsoft-work.ts";
 
 export type Profile = WorkPermissions & {
     seatHeight: number;
@@ -56,6 +56,23 @@ export function demoNoteText(id: string): string {
     if (id === "a-note-1") return "지난 제안서의 수정 항목과 납기 일정을 미팅에서 확인합니다.";
     if (id === "b-note-1") return "시연 장비의 설치 조건과 다음 회의 일정을 방문 중 확인합니다.";
     return "";
+}
+
+export function withLocationEvidence(visits: Visit[], messages: Message[]): Visit[] {
+    return visits.map(visit => {
+        // A message can corroborate a calendar change. The destination itself comes from the event.
+        const title = visit.title.toLowerCase();
+        if (!visit.changedFrom || !visit.address || visits.filter(item => item.title.toLowerCase() === title).length !== 1) return visit;
+        const changeSubject = [`${title} 장소 변경`, `${title} 주소 변경`, `${title} venue change`, `${title} location change`];
+        const address = visit.address.toLowerCase();
+        const message = messages.find(item => {
+            if (!item.sourceUrl || !changeSubject.includes(item.subject.toLowerCase())) return false;
+            const preview = item.preview.toLowerCase();
+            return [`새 주소: ${address}`, `변경 주소: ${address}`, `new address: ${address}`]
+                .some(line => preview === line || preview.startsWith(`${line}. `) || preview === `${line}.`);
+        });
+        return message ? { ...visit, evidence: `Outlook 메일 · ${message.subject}`, sourceUrl: message.sourceUrl } : visit;
+    });
 }
 
 export function profileDefaults(employee: string): Profile {
@@ -112,7 +129,7 @@ export async function createBriefing(profile: Profile, data: WorkData, source: "
     const selected = profile.speakBriefing ? data.messages.filter(message => profile.selectedMessages.includes(message.id)).slice(0, 5) : [];
     const visits = profile.speakBriefing && profile.selectedCalendars ? data.visits.slice(0, 5) : [];
     const details = [
-        ...visits.filter(visit => visit.changedFrom).map(visit => `${visit.time} ${visit.title} 장소가 ${visit.address}로 변경되었습니다.`),
+        ...visits.filter(visit => visit.changedFrom && visit.address).map(visit => `${visit.time} ${visit.title} 장소가 ${visit.address}로 변경되었습니다.`),
         ...visits.filter(visit => visit.previousTime).map(visit => `${visit.title} 시간이 ${visit.previousTime}에서 ${visit.time}으로 변경되었습니다.`),
         ...selected.map(message => `${message.subject}. ${message.preview}`),
     ];

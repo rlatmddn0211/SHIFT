@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { createMicrosoftWork, escapeHtml, ProviderError, type MobileIdentity, type WorkData, type WorkPermissions } from "./microsoft-work.ts";
-import { createBriefing, createWorkspaceStore, demoData, demoNoteText, profileDefaults, type SavedNote } from "./workspace-data.ts";
+import { createBriefing, createWorkspaceStore, demoData, demoNoteText, profileDefaults, withLocationEvidence, type SavedNote } from "./workspace-data.ts";
 import { permissionsPage, profilePage, renderPage } from "./workspace-page.ts";
 
 const API = "/api/vehicles/hyundai-demo-01/workspace";
@@ -123,26 +123,29 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
 
     function sourceFor(employee: string) { return employee.startsWith("ms:") ? "microsoft365" as const : "demo" as const; }
 
-    async function rawData(employee: string): Promise<WorkData> {
-        return sourceFor(employee) === "demo" ? demoData(employee, enableNavTest) : microsoft.load(employee, store.read(employee).profile);
+    async function rawData(employee: string, assertCurrent?: () => void,
+        permissions: WorkPermissions = store.read(employee).profile): Promise<WorkData> {
+        return sourceFor(employee) === "demo" ? demoData(employee, enableNavTest) : microsoft.load(employee, permissions, assertCurrent);
     }
 
-    async function workspaceData(employee: string) {
+    async function workspaceData(employee: string, assertCurrent: () => void) {
         const source = sourceFor(employee);
-        const entry = store.read(employee);
-        const raw = await rawData(employee);
-        const selected = entry.profile;
+        const raw = await rawData(employee, assertCurrent);
+        assertCurrent();
+        const selected = store.read(employee).profile;
+        const messages = selected.mail ? raw.messages.filter(message => selected.selectedMessages.includes(message.id)) : [];
+        const visits = selected.calendar ? raw.visits : [];
         const work = {
-            visits: raw.visits,
-            messages: raw.messages.filter(message => selected.selectedMessages.includes(message.id)),
-            notes: raw.notes.filter(note => selected.selectedNotes.includes(note.id)),
+            visits: source === "microsoft365" ? withLocationEvidence(visits, messages) : visits,
+            messages,
+            notes: selected.notes ? raw.notes.filter(note => selected.selectedNotes.includes(note.id)) : [],
         };
         return { ...work, source, profile: {
             seatHeight: selected.seatHeight, seatPosition: selected.seatPosition, speakBriefing: selected.speakBriefing,
         }, briefing: await createBriefing(selected, work, source, fetcher) };
     }
 
-    async function saveNote(employee: string, request: IncomingMessage): Promise<SavedNote> {
+    async function saveNote(employee: string, request: IncomingMessage, assertCurrent: () => void): Promise<SavedNote> {
         let form: { requestId?: unknown; text?: unknown; visitId?: unknown };
         try { form = JSON.parse(await input(request, "application/json")); }
         catch (error) { if (error instanceof InputError) throw error; throw new InputError(400); }
@@ -151,6 +154,7 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
             (form.visitId !== undefined && (typeof form.visitId !== "string" || form.visitId.length > 512))) throw new InputError(400);
         const requestId = form.requestId;
         const content = form.text.trim();
+        assertCurrent();
         const existing = store.read(employee).notes.find(note => note.requestId === requestId);
         if (existing) return existing;
         const pendingId = `${employee}/${requestId}`;
@@ -159,12 +163,20 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
 
         const save = (async () => {
             const source = sourceFor(employee);
-            const visit = (await rawData(employee)).visits.find(visit => visit.id === form.visitId);
+            const assertCanWrite = () => {
+                assertCurrent();
+                if (source === "microsoft365" && !store.read(employee).profile.notes) throw new InputError(403);
+            };
+            assertCanWrite();
+            const calendar = store.read(employee).profile.calendar;
+            const visit = form.visitId && calendar ? (await rawData(employee, assertCanWrite, { calendar, mail: false, notes: false }))
+                .visits.find(visit => visit.id === form.visitId) : undefined;
+            assertCanWrite();
             const title = visit ? `${visit.title} · 방문 메모` : "방문 메모";
-            if (source === "microsoft365" && !store.read(employee).profile.notes) throw new InputError(403);
             const note: SavedNote = source === "demo" ? { id: randomUUID(), title, source, requestId, text: content } :
-                { ...await microsoft.saveNote(employee, title, content), source, requestId };
-            store.saveNote(employee, note);
+                { ...await microsoft.saveNote(employee, title, content, assertCanWrite), source, requestId };
+            // Keep an already completed external write idempotent unless the provider connection was removed.
+            if (source === "demo" || store.read(employee).profile.notes) store.saveNote(employee, note);
             return note;
         })().finally(() => pendingNotes.delete(pendingId));
         pendingNotes.set(pendingId, save);
@@ -175,22 +187,29 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
         const current = () => typeof auth === "function" ? auth() : auth;
         const employee = current();
         if (!employee) throw new InputError(401);
+        const assertCurrent = () => { if (current() !== employee) throw new InputError(401); };
         if (path === API && request.method === "GET") {
-            const result = await workspaceData(employee);
-            if (current() !== employee) throw new InputError(401);
+            const result = await workspaceData(employee, assertCurrent);
+            assertCurrent();
             json(response, 200, result);
         } else if (path === `${API}/notes` && request.method === "POST") {
-            const note = await saveNote(employee, request);
-            if (current() !== employee) throw new InputError(401);
+            const note = await saveNote(employee, request, assertCurrent);
+            assertCurrent();
             json(response, 201, noteOutput(note));
         } else if (path.startsWith(`${API}/notes/`) && request.method === "GET") {
             const id = decodeURIComponent(path.slice(`${API}/notes/`.length));
-            const profile = store.read(employee).profile;
-            const selected = (await rawData(employee)).notes.find(note => note.id === id && profile.selectedNotes.includes(id));
+            const assertCanRead = () => {
+                assertCurrent();
+                const profile = store.read(employee).profile;
+                if (!profile.notes || !profile.selectedNotes.includes(id)) throw new InputError(404);
+            };
+            assertCanRead();
+            const selected = (await rawData(employee, assertCanRead, { calendar: false, mail: false, notes: true })).notes.find(note => note.id === id);
+            assertCanRead();
             if (!selected) throw new InputError(404);
             const content = sourceFor(employee) === "demo" ? demoNoteText(id) :
-                (await microsoft.notePage(employee, id)).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4_000);
-            if (current() !== employee) throw new InputError(401);
+                (await microsoft.notePage(employee, id, assertCanRead)).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4_000);
+            assertCanRead();
             json(response, 200, { id, title: selected.title, text: content, sourceUrl: selected.sourceUrl });
         } else {
             throw new InputError(404);
