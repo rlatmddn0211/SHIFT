@@ -11,7 +11,9 @@ SHIFT는 공용차를 배정받은 직원이 차량에서 방문 일정을 확�
 
 웹 앱의 온보딩과 홈 구성은 리볼트의 간결한 정보 계층을 참고한다. Pleos에서도 여백과 정렬, 큰 제목으로 우선순위를 드러낸다. [리볼트 화면 레퍼런스](https://wwit.design/2025/03/15/revolt/)
 
-Pleos 시안의 바탕은 짙은 네이비 `#0B1728`, 다음 방문을 강조하는 영역은 Hyundai Blue `#002C5F`다. 주요 버튼에는 Sky Blue `#AACAE6`와 짙은 글자, 본문에는 `#F7F8FA`를 사용한다. 한글은 Noto Sans KR, 영문과 숫자는 Asta Sans를 사용한다. 다음 방문의 시간과 장소를 가장 크게 배치하고, 목적지의 주소와 변경 근거는 짧게 제시한다. 화면마다 주요 동작을 하나씩 강조한다. [현대자동차 CI](https://www.hyundai.com/kr/ko/info/ci) · [Pleos UI 디자인 가이드](https://document.pleos.ai/docs/connect/guide/docs-design/Introduction/intro)
+Pleos 시안의 바탕은 짙은 네이비 `#0B1728`, 다음 방문을 강조하는 영역은 Hyundai Blue `#002C5F`다. 주요 버튼에는 Sky Blue `#AACAE6`와 짙은 글자, 본문에는 `#F7F8FA`를 사용한다. 한글은 Noto Sans KR, 영문과 숫자는 Asta Sans를 사용한다. 다음 방문의 시간과 장소를 가장 크게 배치하고, 목적지의 주소와 변경 근거는 짧게 제시한다. 화면마다 주요 동작을 하나씩 강조한다. [현대자동차 CI 전용색상](https://www.hyundai.com/kr/ko/info/ci/ci-color) · [Pleos UI 디자인 가이드](https://document.pleos.ai/docs/connect/guide/docs-design/Introduction/intro)
+
+[오늘 방문 업무 분할 창 미리보기 (PNG)](images/shift-pleos-compact.png)
 
 | 화면 | 화면에 남길 정보와 동작 | 완료 상태 |
 | --- | --- | --- |
