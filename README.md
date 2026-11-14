@@ -14,6 +14,10 @@ SHIFT는 공용차를 배정받은 직원이 현대차의 Pleos Connect 차량 �
 - [공모전 작품 소개 초안](docs/SUBMISSION_DRAFT.md)
 - [공식 접수양식에 본문을 넣은 Word 초안](docs/SHIFT_application_draft.docx)
 - [Pleos 차량 화면 디자인·개발 가이드](docs/PLEOS_SCREEN_DESIGN.md)
+- [SHIFT v1.2 구현 목표 프롬프트](docs/SHIFT_V12_GOAL.md)
+- [편집 가능한 Figma와 클릭 시연](docs/SHIFT_V12_FIGMA.md)
+- [업무 계정과 모바일 설정](docs/SHIFT_WORKSPACE.md)
+- [Pleos v1.2 기능별 실행 결과](docs/SHIFT_V12_DEMO.md)
 
 Word 초안에는 작품 소개 본문이 들어 있습니다. 참가자 정보, 팀명, 전원 동의·서명과 최종 참고자료 링크는 제출 전에 작성합니다.
 
@@ -21,7 +25,7 @@ Word 초안에는 작품 소개 본문이 들어 있습니다. 참가자 정보,
 
 Pleos의 **공용차 로그인** 화면에서 QR을 스캔하고 모바일 웹에 6자리 일회용 PIN을 입력하면 **오늘 방문 업무** 화면으로 자동 전환됩니다. 직원 A와 B는 각자 다른 예시 일정을 봅니다. PIN은 2분 동안 유효하며 5회 틀리면 잠깁니다. 다른 직원의 승인이 완료되면 이전 차량 세션이 만료됩니다.
 
-이번 시연은 로컬 승인 서버, 메모리 세션, 시연 계정을 사용합니다. 실제 Microsoft 365 계정 연동, QR 로그아웃과 목적지 전송은 후속 구현입니다. **내비로 보내기**를 누르면 주소와 시연 안내가 표시됩니다.
+로컬 시연은 서버 메모리에 차량 세션을 유지하고 개인 설정과 시연 메모를 로컬 파일에 보관합니다. 주차 중 오늘 방문 업무에서 **업무 브리핑**, **시트 설정**, **음성 메모**, **QR 로그아웃**, **운전자 교대**를 열 수 있습니다. 내비 경로 요청은 `SHIFT_ENABLE_NAV_TEST=1`을 설정한 서버에서 직원 A의 **42dot · 내비 시험**으로 시험할 수 있습니다. Microsoft 365와 외부 AI 제공자 설정은 업무 계정 문서를 따릅니다.
 
 Node.js 24.12 이상, JDK 17 또는 21, Android SDK Platform 34, Build Tools 35.0.0, Platform-Tools를 준비합니다. `ANDROID_HOME`을 Android SDK 경로로 설정한 뒤 Pleos Connect Emulator를 실행합니다. [공식 에뮬레이터 가이드](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)
 
