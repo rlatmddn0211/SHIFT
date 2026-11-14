@@ -87,13 +87,15 @@ SHIFT를 **현대자동차가 기업 공용차에 적용할 수 있는 서비스
 
 최종 접수용 본문은 [공모전 작품 소개](docs/SUBMISSION_DRAFT.md)를 기준으로 합니다. Word 초안은 이 본문으로 재생성한 뒤 사용합니다. 참가자 정보, 팀명, 전원 동의·서명과 최종 참고자료 링크는 제출 전에 작성합니다.
 
-## 디자인 초안
+## 디자인과 웹 프로토타입
 
-[첫 디자인 콘셉트와 화면 설명](docs/design/README.md) · [시안 PNG](docs/design/shift-concept-v1.png) · [생성 프롬프트](docs/design/shift-concept-v1.prompt.txt)
+최신 [클릭형 웹 프로토타입](prototype/README.md)은 확정된 Pleos 시안을 바탕으로 차량 9개·휴대폰 7개·주요 상태 8개를 제공합니다. 업무와 차량 연동은 예시 데이터로 시연하며 실제 서비스 연동과 구분합니다.
 
-차량 업무 홈과 휴대폰 연결 승인 화면을 함께 만든 정적 시안입니다. 이번에 확정한 좌석 설정 화면과 QR·PIN, 음성 메모 상세 화면은 후속 시안에서 구체화합니다.
+[전체 디자인 자료와 24개 화면 PNG](docs/design/prototype-v2/README.md) · [로고 SVG](docs/design/prototype-v2/shift-wordmark.svg) · [로고 PNG](docs/design/prototype-v2/SHIFT-wordmark-hyundai-blue.png)
 
-![SHIFT 차량 업무 홈과 휴대폰 연결 승인 시안](docs/design/shift-concept-v1.png)
+![SHIFT 차량·휴대폰 웹 프로토타입](docs/design/prototype-v2/overview.png)
+
+이전 [첫 정적 디자인 콘셉트](docs/design/README.md)도 보관합니다.
 
 ## 개발 작업 위치
 
