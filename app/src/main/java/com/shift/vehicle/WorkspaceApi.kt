@@ -63,6 +63,10 @@ internal class WorkspaceApi(private val origin: String = BuildConfig.SHIFT_API_O
         return request("POST", "$PATH/notes", token, body).getString("source")
     }
 
+    fun savedNotes(token: String): List<WorkNote> =
+        request("GET", "$PATH/notes", token).getJSONArray("notes").items()
+            .map { WorkNote(it.getString("id"), it.getString("title")) }
+
     fun readNote(token: String, id: String): String {
         val segment = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
         return request("GET", "$PATH/notes/$segment", token).getString("text")

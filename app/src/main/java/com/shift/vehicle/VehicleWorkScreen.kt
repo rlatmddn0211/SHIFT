@@ -30,6 +30,7 @@ internal sealed interface VehicleWorkAction {
     data object Briefing : VehicleWorkAction
     data object Seat : VehicleWorkAction
     data object VoiceNote : VehicleWorkAction
+    data object VisitMemos : VehicleWorkAction
     data object Music : VehicleWorkAction
     data object Logout : VehicleWorkAction
     data object ChangeDriver : VehicleWorkAction
@@ -103,15 +104,16 @@ internal class VehicleWorkScreen(
                     Triple("업무 브리핑", VehicleWorkAction.Briefing, true),
                     Triple("시트 설정", VehicleWorkAction.Seat, false),
                     Triple("음성 메모", VehicleWorkAction.VoiceNote, false),
-                    Triple("휴대폰 음악", VehicleWorkAction.Music, false),
+                    Triple("방문 메모", VehicleWorkAction.VisitMemos, false),
                 )
                 actions.chunked(if (wide) 4 else 2).forEach { append(actionRow(it), 22) }
                 val session = listOf(
+                    Triple("휴대폰 음악", VehicleWorkAction.Music, false),
                     Triple("QR 로그아웃", VehicleWorkAction.Logout, false),
                     Triple("운전자 교대", VehicleWorkAction.ChangeDriver, false),
                     Triple("새로고침", VehicleWorkAction.Refresh, false),
                 )
-                session.chunked(if (wide) 3 else 2).forEach { append(actionRow(it), 20) }
+                session.chunked(if (wide) 4 else 2).forEach { append(actionRow(it), 20) }
             } else {
                 append(label("시트, 목적지 변경, 메모와 로그아웃은 주차 후 이용할 수 있습니다.", 29, color = SKY), 34)
             }

@@ -26,6 +26,10 @@ function accepts(request: IncomingMessage, type: string): boolean {
     }) ?? false;
 }
 
+export function acceptsPhoneJson(request: IncomingMessage): boolean {
+    return accepts(request, "application/json");
+}
+
 async function readBuiltFile(buildDirectory: URL, name: string): Promise<Buffer | undefined> {
     try {
         return await readFile(new URL(name, buildDirectory));
@@ -38,7 +42,7 @@ async function readBuiltFile(buildDirectory: URL, name: string): Promise<Buffer 
 
 export async function writePhonePage(request: IncomingMessage, response: ServerResponse, status: number, page: PhonePage,
     buildDirectory = defaultDist): Promise<boolean> {
-    if (accepts(request, "application/json")) {
+    if (acceptsPhoneJson(request)) {
         response.writeHead(status, { ...commonHeaders, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store",
             Vary: "Accept", "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'" });
         response.end(JSON.stringify(page));

@@ -1,20 +1,23 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { type IncomingMessage, type ServerResponse } from "node:http";
 import { createMicrosoftWork, escapeHtml, ProviderError, safeLink, type MobileIdentity, type WorkData, type WorkPermissions } from "./microsoft-work.ts";
-import { writePhonePage } from "./mobile-web.ts";
+import { acceptsPhoneJson, writePhonePage } from "./mobile-web.ts";
 import { createBriefing, createWorkspaceStore, demoData, demoNoteText, profileDefaults, withLocationEvidence, type SavedNote } from "./workspace-data.ts";
 import { permissionsPage, profilePage, renderPage } from "./workspace-page.ts";
 
 const API = "/api/vehicles/hyundai-demo-01/workspace";
 const MOBILE = "/mobile";
+const MOBILE_NOTES = `${MOBILE}/notes`;
 const COOKIE = "shift_workspace";
 const HOUR = 3_600_000;
 const OPAQUE = /^[A-Za-z0-9_-]{43}$/;
 const demoNames = new Map([["employee-a", "직원 A"], ["employee-b", "직원 B"]]);
+const noteEntities = new Map([["amp", "&"], ["lt", "<"], ["gt", ">"], ["quot", '"'], ["#39", "'"], ["apos", "'"], ["nbsp", " "]]);
 
 type Ticket = { identity: MobileIdentity; csrf: string; until: number };
 type OAuthAttempt = { verifier: string; permissions: WorkPermissions; returnTo: string; browser: string; until: number; startingIdentity?: string };
 type VehicleAuth = string | (() => string | undefined) | undefined;
+type NoteInput = { csrf?: unknown; requestId?: unknown; text?: unknown; visitId?: unknown };
 
 class InputError extends Error {
     status: number;
@@ -81,7 +84,30 @@ function safeReturn(value: string | null): string {
 }
 
 function noteOutput(note: SavedNote) {
-    return { id: note.id, title: note.title, source: note.source, sourceUrl: note.sourceUrl };
+    return { id: note.id, title: note.title, source: note.source, sourceUrl: safeLink(note.sourceUrl) };
+}
+
+function phoneNoteOutput(note: SavedNote) {
+    return { ...noteOutput(note), text: note.text };
+}
+
+async function readNoteInput(request: IncomingMessage): Promise<NoteInput> {
+    try {
+        const value: unknown = JSON.parse(await input(request, "application/json"));
+        if (value === null || typeof value !== "object" || Array.isArray(value)) throw new InputError(400);
+        return value;
+    } catch (error) {
+        if (error instanceof InputError) throw error;
+        throw new InputError(400);
+    }
+}
+
+function noteText(html: string): string {
+    const body = html.match(/<body\b[^>]*>([\s\S]*)<\/body>/i)?.[1] ?? html;
+    return body.replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
+        .replace(/<br\s*\/?\s*>|<\/(?:div|li|p)>/gi, "\n").replace(/<[^>]+>/g, " ")
+        .replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/gi, (entity, key: string) => noteEntities.get(key.toLowerCase()) ?? entity)
+        .split("\n").map(line => line.replace(/\s+/g, " ").trim()).filter(Boolean).join("\n").slice(0, 4_000);
 }
 
 export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch, storageFile,
@@ -129,6 +155,19 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
         return sourceFor(employee) === "demo" ? demoData(employee, enableNavTest) : microsoft.load(employee, permissions, assertCurrent);
     }
 
+    async function visitChoices(employee: string, assertCurrent: () => void) {
+        if (!store.read(employee).profile.calendar) return [];
+        const { visits } = await rawData(employee, assertCurrent, { calendar: true, mail: false, notes: false });
+        assertCurrent();
+        if (!store.read(employee).profile.calendar) return [];
+        return visits.map(({ id, title, time }) => ({ id, title, time }));
+    }
+
+    function savedNotes(employee: string) {
+        const entry = store.read(employee);
+        return entry.notes.filter(note => note.source === "demo" || entry.profile.notes);
+    }
+
     async function workspaceData(employee: string, assertCurrent: () => void) {
         const source = sourceFor(employee);
         const raw = await rawData(employee, assertCurrent);
@@ -146,16 +185,18 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
         }, briefing: await createBriefing(selected, work, source, fetcher) };
     }
 
-    async function saveNote(employee: string, request: IncomingMessage, assertCurrent: () => void): Promise<SavedNote> {
-        let form: { requestId?: unknown; text?: unknown; visitId?: unknown };
-        try { form = JSON.parse(await input(request, "application/json")); }
-        catch (error) { if (error instanceof InputError) throw error; throw new InputError(400); }
-        if (!form || typeof form.requestId !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(form.requestId) ||
+    async function saveNote(employee: string, form: NoteInput, assertCurrent: () => void, requireKnownVisit = false): Promise<SavedNote> {
+        if (typeof form.requestId !== "string" || !/^[A-Za-z0-9_-]{8,128}$/.test(form.requestId) ||
             typeof form.text !== "string" || !form.text.trim() || form.text.length > 4_000 ||
-            (form.visitId !== undefined && (typeof form.visitId !== "string" || form.visitId.length > 512))) throw new InputError(400);
+            (form.visitId !== undefined && (typeof form.visitId !== "string" || form.visitId.length > 512 || (requireKnownVisit && !form.visitId.trim())))) throw new InputError(400);
         const requestId = form.requestId;
         const content = form.text.trim();
-        assertCurrent();
+        const source = sourceFor(employee);
+        const assertCanWrite = () => {
+            assertCurrent();
+            if (source === "microsoft365" && !store.read(employee).profile.notes) throw new InputError(403);
+        };
+        assertCanWrite();
         const existing = store.read(employee).notes.find(note => note.requestId === requestId);
         if (existing) return existing;
         const pendingId = `${employee}/${requestId}`;
@@ -163,16 +204,9 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
         if (pending) return pending;
 
         const save = (async () => {
-            const source = sourceFor(employee);
-            const assertCanWrite = () => {
-                assertCurrent();
-                if (source === "microsoft365" && !store.read(employee).profile.notes) throw new InputError(403);
-            };
+            const visit = form.visitId ? (await visitChoices(employee, assertCanWrite)).find(visit => visit.id === form.visitId) : undefined;
             assertCanWrite();
-            const calendar = store.read(employee).profile.calendar;
-            const visit = form.visitId && calendar ? (await rawData(employee, assertCanWrite, { calendar, mail: false, notes: false }))
-                .visits.find(visit => visit.id === form.visitId) : undefined;
-            assertCanWrite();
+            if (form.visitId && !visit && requireKnownVisit) throw new InputError(400);
             const title = visit ? `${visit.title} · 방문 메모` : "방문 메모";
             const note: SavedNote = source === "demo" ? { id: randomUUID(), title, source, requestId, text: content } :
                 { ...await microsoft.saveNote(employee, title, content, assertCanWrite), source, requestId };
@@ -193,23 +227,29 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
             const result = await workspaceData(employee, assertCurrent);
             assertCurrent();
             json(response, 200, result);
+        } else if (path === `${API}/notes` && request.method === "GET") {
+            json(response, 200, { notes: savedNotes(employee).map(noteOutput) });
         } else if (path === `${API}/notes` && request.method === "POST") {
-            const note = await saveNote(employee, request, assertCurrent);
+            const note = await saveNote(employee, await readNoteInput(request), assertCurrent);
             assertCurrent();
             json(response, 201, noteOutput(note));
         } else if (path.startsWith(`${API}/notes/`) && request.method === "GET") {
-            const id = decodeURIComponent(path.slice(`${API}/notes/`.length));
+            let id: string;
+            try { id = decodeURIComponent(path.slice(`${API}/notes/`.length)); }
+            catch { throw new InputError(400); }
+            const saved = savedNotes(employee).find(note => note.id === id);
             const assertCanRead = () => {
                 assertCurrent();
                 const profile = store.read(employee).profile;
-                if (!profile.notes || !profile.selectedNotes.includes(id)) throw new InputError(404);
+                if (saved?.source === "demo") return;
+                if (!profile.notes || (!saved && !profile.selectedNotes.includes(id))) throw new InputError(404);
             };
             assertCanRead();
-            const selected = (await rawData(employee, assertCanRead, { calendar: false, mail: false, notes: true })).notes.find(note => note.id === id);
+            const selected = saved ?? (await rawData(employee, assertCanRead, { calendar: false, mail: false, notes: true })).notes.find(note => note.id === id);
             assertCanRead();
             if (!selected) throw new InputError(404);
-            const content = sourceFor(employee) === "demo" ? demoNoteText(id) :
-                (await microsoft.notePage(employee, id, assertCanRead)).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 4_000);
+            const content = sourceFor(employee) === "demo" ? saved?.text ?? demoNoteText(id) :
+                noteText(await microsoft.notePage(employee, id, assertCanRead));
             assertCanRead();
             json(response, 200, { id, title: selected.title, text: content, sourceUrl: selected.sourceUrl });
         } else {
@@ -217,27 +257,50 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
         }
     }
 
+    async function mobileNotes(request: IncomingMessage, response: ServerResponse, ticket: Ticket | undefined) {
+        const title = "내 방문 메모";
+        const message = "차량의 SHIFT QR에서 로그인한 후 열 수 있습니다.";
+        const employee = ticket?.identity.id;
+        const assertCurrent = () => { if (!ticket || ticketFor(request) !== ticket) throw new InputError(401); };
+        if (request.method === "POST") {
+            if (!ticket) throw new InputError(401);
+            if ((request.headers.origin !== undefined && request.headers.origin !== origin) || request.headers["sec-fetch-site"] === "cross-site") throw new InputError(403);
+            const form = await readNoteInput(request);
+            assertCurrent();
+            if (typeof form.csrf !== "string" || !equal(form.csrf, ticket.csrf)) throw new InputError(403);
+            if (typeof form.text === "string" && form.text.length > 3_000) throw new InputError(400);
+            const note = await saveNote(ticket.identity.id, form, assertCurrent, true);
+            assertCurrent();
+            json(response, 201, phoneNoteOutput(note));
+            return;
+        }
+        if (request.method !== "GET") throw new InputError(405);
+
+        // A provider outage can make visits unavailable without hiding notes already saved by the driver.
+        const visits = employee && acceptsPhoneJson(request) ? await visitChoices(employee, assertCurrent).catch(error => {
+            if (error instanceof InputError) throw error;
+            return [];
+        }) : [];
+        if (ticket) assertCurrent();
+        const notes = employee ? savedNotes(employee).map(phoneNoteOutput) : [];
+        const page = { kind: "notes" as const, title, notes, profileUrl: MOBILE, ...(ticket && employee ?
+            { csrf: ticket.csrf, visits, canSave: sourceFor(employee) === "demo" || store.read(employee).profile.notes } : { message }) };
+        if (await writePhonePage(request, response, ticket ? 200 : 401, page)) return;
+        response.setHeader("Vary", "Accept");
+        if (!ticket || ticketFor(request) !== ticket) {
+            html(response, 401, renderPage(title, `<p>${message}</p>`));
+            return;
+        }
+        const items = notes.map(note => `<li><strong>${escapeHtml(note.title)}</strong>
+            ${note.sourceUrl ? `<p><a href="${escapeHtml(note.sourceUrl)}" rel="noreferrer">OneNote에서 열기</a></p>` : ""}
+            ${note.text ? `<pre>${escapeHtml(note.text)}</pre>` : ""}</li>`).join("");
+        html(response, 200, renderPage(title, `${items ? `<ul>${items}</ul>` : "<p>저장한 방문 메모가 없습니다.</p>"}<a href="/mobile">업무·개인 설정</a>`));
+    }
+
     async function mobile(request: IncomingMessage, response: ServerResponse, target: URL) {
         const path = target.pathname;
         const ticket = ticketFor(request);
-        if (path === `${MOBILE}/notes` && request.method === "GET") {
-            const title = "내 방문 메모";
-            const message = "차량의 SHIFT QR에서 로그인한 후 열 수 있습니다.";
-            const notes = ticket ? store.read(ticket.identity.id).notes.map(note => ({ ...noteOutput(note),
-                text: note.text, sourceUrl: safeLink(note.sourceUrl) })) : [];
-            const page = { kind: "notes" as const, title, notes, profileUrl: MOBILE, ...(!ticket ? { message } : {}) };
-            if (await writePhonePage(request, response, ticket ? 200 : 401, page)) return;
-            response.setHeader("Vary", "Accept");
-            if (!ticket || ticketFor(request) !== ticket) {
-                html(response, 401, renderPage(title, `<p>${message}</p>`));
-                return;
-            }
-            const items = notes.map(note => `<li><strong>${escapeHtml(note.title)}</strong>
-                ${note.sourceUrl ? `<p><a href="${escapeHtml(note.sourceUrl)}" rel="noreferrer">OneNote에서 열기</a></p>` : ""}
-                ${note.text ? `<pre>${escapeHtml(note.text)}</pre>` : ""}</li>`).join("");
-            html(response, 200, renderPage(title, `${items ? `<ul>${items}</ul>` : "<p>저장한 방문 메모가 없습니다.</p>"}<a href="/mobile">업무·개인 설정</a>`));
-            return;
-        }
+        if (path === MOBILE_NOTES) return await mobileNotes(request, response, ticket);
         if (path === `${MOBILE}/microsoft/connect`) {
             if (request.method === "GET") {
                 const previous = cookie(request, "shift_oauth_browser");
@@ -331,7 +394,9 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
             if (response.destroyed || response.headersSent) return true;
             const status = error instanceof InputError ? error.status : error instanceof ProviderError ? 502 : 500;
             if (status === 413) { response.setHeader("Connection", "close"); request.resume(); }
-            if (isVehicle) json(response, status, { error: status === 502 ? "microsoft365_unavailable" : "workspace_request_failed" });
+            if (isVehicle || (path === MOBILE_NOTES && (request.method === "POST" || acceptsPhoneJson(request)))) {
+                json(response, status, { error: status === 502 ? "microsoft365_unavailable" : "workspace_request_failed" });
+            }
             else html(response, status, renderPage(status === 502 ? "업무 계정 다시 연결" : "요청을 처리하지 못했습니다",
                 status === 502 ? '<p>Microsoft 365 계정 또는 권한을 확인하세요.</p><a href="/mobile/microsoft/connect">계정 연결</a>' : '<a href="/mobile">업무·개인 설정</a>'));
         }

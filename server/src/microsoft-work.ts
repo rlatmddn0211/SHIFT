@@ -90,9 +90,14 @@ export function createMicrosoftWork(publicOrigin: string, fetcher: Fetcher, now:
     }
 
     async function fetchJson<T>(url: string, init: RequestInit): Promise<T> {
-        const response = await fetcher(url, { ...init, redirect: "error", signal: AbortSignal.timeout(8_000) });
-        if (!response.ok) throw new ProviderError(response.status);
-        return await response.json() as T;
+        try {
+            const response = await fetcher(url, { ...init, redirect: "error", signal: AbortSignal.timeout(8_000) });
+            if (!response.ok) throw new ProviderError(response.status);
+            return await response.json() as T;
+        } catch (error) {
+            if (error instanceof ProviderError) throw error;
+            throw new ProviderError(502);
+        }
     }
 
     async function redeem(form: Record<string, string>, priorRefresh?: string): Promise<TokenSet> {
@@ -196,6 +201,7 @@ export function createMicrosoftWork(publicOrigin: string, fetcher: Fetcher, now:
             method: "POST", headers: { "Content-Type": "text/html; charset=utf-8" },
             body: `<!doctype html><html><head><title>${escapeHtml(title)}</title></head><body><p>${escapeHtml(content).replaceAll("\n", "<br>")}</p></body></html>`,
         });
+        if (!result?.id) throw new ProviderError(502);
         return { id: result.id, title: text(result.title, 150) || title, sourceUrl: safeLink(result.links?.oneNoteWebUrl?.href) };
     }
 
@@ -203,9 +209,14 @@ export function createMicrosoftWork(publicOrigin: string, fetcher: Fetcher, now:
         const access = await accessFor(identity);
         assertCurrent();
         const url = `${GRAPH}/me/onenote/pages/${encodeURIComponent(id)}/content`;
-        const response = await fetcher(url, { headers: { Authorization: `Bearer ${access}` }, redirect: "error", signal: AbortSignal.timeout(8_000) });
-        if (!response.ok) throw new ProviderError(response.status);
-        return (await response.text()).slice(0, 70_000);
+        try {
+            const response = await fetcher(url, { headers: { Authorization: `Bearer ${access}` }, redirect: "error", signal: AbortSignal.timeout(8_000) });
+            if (!response.ok) throw new ProviderError(response.status);
+            return (await response.text()).slice(0, 70_000);
+        } catch (error) {
+            if (error instanceof ProviderError) throw error;
+            throw new ProviderError(502);
+        }
     }
 
     return { configured, authorize, connect, load, saveNote, notePage, disconnect(identity: string) {

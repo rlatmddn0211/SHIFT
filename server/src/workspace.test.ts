@@ -118,32 +118,121 @@ test("mobile changes a profile with CSRF validation and saved notes are escaped,
     assert.equal(saved.read("employee-b").notes.length, 0);
 });
 
-test("live phone notes JSON reads only the authorized mobile identity's saved notes", async t => {
+test("mobile visit notes require CSRF and remain idempotent and private on phone and vehicle", async t => {
     const { server, base } = await setup();
     t.after(() => server.close());
-    const save = await fetch(`${base}${API}/notes`, {
-        method: "POST", headers: { ...AUTH_A, "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId: "exclude-from-phone-model", visitId: "a-visit-1", text: "직원 A 메모" }),
-    });
-    assert.equal(save.status, 201);
-    const note = await save.json();
     const cookieA = requestCookie(await fetch(`${base}/test/approve`));
     const cookieB = requestCookie(await fetch(`${base}/test/approve-b`));
     const read = (cookie: string) => fetch(`${base}/mobile/notes`, { headers: { cookie, Accept: "application/json" } });
+    const send = (cookie: string, body: object, origin = base) => fetch(`${base}/mobile/notes`, {
+        method: "POST", headers: { cookie, origin, "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
 
     const anonymous = await read("");
     assert.equal(anonymous.status, 401);
     assert.equal(anonymous.headers.get("cache-control"), "no-store");
     assert.deepEqual(await anonymous.json(), { kind: "notes", title: "내 방문 메모", profileUrl: "/mobile", notes: [],
         message: "차량의 SHIFT QR에서 로그인한 후 열 수 있습니다." });
-    const employeeA = await read(cookieA);
-    assert.equal(employeeA.status, 200);
-    assert.deepEqual(await employeeA.json(), { kind: "notes", title: "내 방문 메모", profileUrl: "/mobile", notes: [
-        { id: note.id, title: "한빛모빌리티 미팅 · 방문 메모", text: "직원 A 메모", source: "demo" },
-    ] });
-    const employeeB = await read(cookieB);
-    assert.equal(employeeB.status, 200);
-    assert.deepEqual((await employeeB.json()).notes, []);
+    const profileA = await (await read(cookieA)).json();
+    const profileB = await (await read(cookieB)).json();
+    assert.match(profileA.csrf, /^[A-Za-z0-9_-]{43}$/);
+    assert.notEqual(profileA.csrf, profileB.csrf);
+    assert.equal(profileA.canSave, true);
+    assert.deepEqual(profileA.visits[0], { id: "a-visit-1", title: "한빛모빌리티 미팅", time: "10:30" });
+    assert.equal(profileB.visits[0].id, "b-visit-1");
+    const body = { csrf: profileA.csrf, requestId: "exclude-from-phone-model", visitId: "a-visit-1", text: "직원 A 메모" };
+    assert.equal((await send("", body)).status, 401);
+    assert.equal((await send(cookieB, body)).status, 403);
+    assert.equal((await send(cookieA, body, "https://outside.example")).status, 403);
+    assert.equal((await send(cookieA, { ...body, visitId: "b-visit-1" })).status, 400);
+    assert.equal((await send(cookieA, { ...body, text: "   " })).status, 400);
+    assert.equal((await send(cookieA, { ...body, text: "가".repeat(3_001) })).status, 400);
+    const writes = await Promise.all([send(cookieA, body), send(cookieA, body)]);
+    assert.deepEqual(writes.map(response => response.status), [201, 201]);
+    const [note, duplicate] = await Promise.all(writes.map(response => response.json()));
+    assert.deepEqual(note, { id: note.id, title: "한빛모빌리티 미팅 · 방문 메모", text: "직원 A 메모", source: "demo" });
+    assert.deepEqual(duplicate, note);
+    assert.deepEqual((await (await read(cookieA)).json()).notes, [note]);
+    assert.deepEqual((await (await read(cookieB)).json()).notes, []);
+
+    const loadCar = (headers: HeadersInit) => fetch(`${base}${API}`, { headers }).then(response => response.json());
+    const carA = await loadCar(AUTH_A);
+    assert.deepEqual(carA.notes.map(item => item.id), ["a-note-1"]);
+    const list = `${base}${API}/notes`;
+    assert.equal((await fetch(list)).status, 401);
+    assert.deepEqual(await (await fetch(list, { headers: AUTH_A })).json(), { notes: [{ id: note.id, title: note.title, source: "demo" }] });
+    assert.deepEqual(await (await fetch(list, { headers: AUTH_B })).json(), { notes: [] });
+    const detail = `${base}${API}/notes/${note.id}`;
+    assert.equal((await fetch(detail)).status, 401);
+    assert.equal((await fetch(detail, { headers: AUTH_B })).status, 404);
+    assert.equal((await (await fetch(detail, { headers: AUTH_A })).json()).text, note.text);
+});
+
+test("Microsoft mobile notes require OneNote consent and read saved content through the same employee", async t => {
+    testEnv(t, { SHIFT_MICROSOFT_CLIENT_ID: "test-client", SHIFT_MICROSOFT_CLIENT_SECRET: "test-secret", SHIFT_MICROSOFT_TENANT: "organizations" });
+    const employee = `ms:${createHash("sha256").update("guid:test@example.com").digest("hex")}`;
+    const savedHtml = new Map<string, string>();
+    let calendarError = true;
+    const mock: typeof fetch = async (input, init) => {
+        const url = new URL(String(input));
+        switch (url.pathname) {
+            case "/organizations/oauth2/v2.0/token": return Response.json({ access_token: "test-access", expires_in: 3600 });
+            case "/v1.0/me": return Response.json({ id: "guid", userPrincipalName: "test@example.com" });
+            case "/v1.0/me/calendarView":
+                if (calendarError) throw new Error("Outlook unavailable");
+                return Response.json({ value: [{ id: "work-visit", subject: "업무 일정", start: { dateTime: "2026-11-14T11:10:00" } }] });
+            case "/v1.0/me/onenote/pages":
+                if (init?.method !== "POST") return Response.json({ value: [] });
+                assert.equal(new Headers(init.headers).get("Authorization"), "Bearer test-access");
+                savedHtml.set("note-page", String(init.body));
+                return Response.json({ id: "note-page", links: { oneNoteWebUrl: { href: "https://www.onenote.com/note-page" } } });
+            case "/v1.0/me/onenote/pages/note-page/content":
+                assert.equal(new Headers(init?.headers).get("Authorization"), "Bearer test-access");
+                return new Response(savedHtml.get("note-page"));
+            default: throw new Error(`Unexpected provider route: ${url.pathname}`);
+        }
+    };
+    const { server, base } = await setup({ fetcher: mock });
+    t.after(() => server.close());
+    async function connect(notes: boolean) {
+        const start = await fetch(`${base}/mobile/microsoft/connect`);
+        const cookie = requestCookie(start);
+        const body = new URLSearchParams({ csrf: csrfField(await start.text()), calendar: "yes" });
+        if (notes) body.set("notes", "yes");
+        const consent = await fetch(`${base}/mobile/microsoft/connect`, { method: "POST", headers: { cookie }, body, redirect: "manual" });
+        const upstream = new URL(consent.headers.get("location")!);
+        const callback = await fetch(`${base}/mobile/microsoft/callback?code=code&state=${upstream.searchParams.get("state")}`, { headers: { cookie }, redirect: "manual" });
+        assert.equal(callback.status, 303);
+        return requestCookie(callback);
+    }
+    const read = (cookie: string) => fetch(`${base}/mobile/notes`, { headers: { cookie, Accept: "application/json" } });
+    const write = (cookie: string, csrf: string, visitId?: string) => fetch(`${base}/mobile/notes`, { method: "POST",
+        headers: { cookie, "Content-Type": "application/json" }, body: JSON.stringify({ csrf, requestId: "ms-mobile-note", text: "첫 줄 & 메모\n둘째 줄 <확인>", visitId }) });
+
+    const unconsented = await connect(false);
+    const unconsentedPage = await (await read(unconsented)).json();
+    assert.equal(unconsentedPage.canSave, false);
+    assert.equal((await write(unconsented, unconsentedPage.csrf)).status, 403);
+    assert.equal(savedHtml.size, 0);
+
+    const consented = await connect(true);
+    const page = await read(consented);
+    assert.equal(page.status, 200);
+    const model = await page.json();
+    assert.deepEqual(model.visits, []);
+    assert.equal(model.canSave, true);
+    calendarError = false;
+    assert.deepEqual((await (await read(consented)).json()).visits, [{ id: "work-visit", title: "업무 일정", time: "11:10" }]);
+    assert.equal((await write(consented, model.csrf, "work-visit")).status, 201);
+    assert.equal(savedHtml.size, 1);
+    const metadata = { id: "note-page", title: "업무 일정 · 방문 메모", source: "microsoft365", sourceUrl: "https://www.onenote.com/note-page" };
+    assert.deepEqual((await (await read(consented)).json()).notes, [metadata]);
+    const headers = { Authorization: `Bearer ${employee}` };
+    calendarError = true;
+    assert.deepEqual(await (await fetch(`${base}${API}/notes`, { headers })).json(), { notes: [metadata] });
+    assert.equal((await fetch(`${base}${API}/notes/note-page`, { headers: AUTH_B })).status, 404);
+    const body = await (await fetch(`${base}${API}/notes/note-page`, { headers })).json();
+    assert.equal(body.text, "첫 줄 & 메모\n둘째 줄 <확인>");
 });
 
 test("OAuth consent binds its callback to the originating browser and routes verified Microsoft identity", async t => {

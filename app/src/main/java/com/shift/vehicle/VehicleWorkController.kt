@@ -53,6 +53,7 @@ internal class VehicleWorkController(
             VehicleWorkAction.Briefing -> briefing(workspace)
             VehicleWorkAction.Seat -> seat(workspace.profile)
             VehicleWorkAction.VoiceNote -> note(workspace)
+            VehicleWorkAction.VisitMemos -> loadVisitMemos()
             VehicleWorkAction.Music -> music()
             VehicleWorkAction.Logout, VehicleWorkAction.ChangeDriver, VehicleWorkAction.Refresh -> Unit
         }
@@ -213,15 +214,48 @@ internal class VehicleWorkController(
                 panel.divider(20)
                 panel.append(label("업무 노트", 24, Font.Medium, SKY), 16)
                 workspace.notes.take(3).forEach { linked ->
-                    panel.append(button(linked.title, primary = false) { openNote(workspace, linked) }, 12)
+                    panel.append(button(linked.title, primary = false) {
+                        openNote(linked, "업무 노트", Action("돌아가기", false) { note(workspace) })
+                    }, 12)
                 }
             }
         }
     }
 
-    private fun openNote(workspace: Workspace, note: WorkNote) {
-        val back = Action("돌아가기", false) { note(workspace) }
-        result(note.title, "선택한 업무 노트를 불러오는 중입니다.", back)
+    private fun loadVisitMemos() {
+        val back = Action("오늘 방문 업무", false, ::dismiss)
+        result("방문 메모", "방문 메모를 불러오는 중입니다.", back)
+        val expected = revision
+        notes.execute {
+            val response = runCatching { workspaceApi.savedNotes(session.token) }
+            main.post {
+                if (!valid(expected)) return@post
+                response.onSuccess(::showVisitMemos).onFailure {
+                    if (it is WorkspaceSessionEnded) onSessionEnded()
+                    else showSheet("방문 메모", "방문 메모를 불러오지 못했습니다.",
+                        listOf(Action("다시 시도", run = ::loadVisitMemos), back)) { panel ->
+                        panel.append(label("연결을 확인하고 다시 시도하세요.", 29, Font.Medium, MUTED))
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showVisitMemos(memos: List<WorkNote>) {
+        val actions = listOf(Action("오늘 방문 업무", false, ::dismiss))
+        showSheet("방문 메모", "내가 저장한 방문 메모를 확인합니다.", actions) { panel ->
+            if (memos.isEmpty()) {
+                panel.append(label("저장한 방문 메모가 없습니다.", 29, Font.Medium, MUTED))
+            }
+            val back = Action("돌아가기", false) { showVisitMemos(memos) }
+            for ((index, memo) in memos.withIndex()) {
+                panel.append(button(memo.title, primary = false) { openNote(memo, "방문 메모", back) }, if (index == 0) 0 else 12)
+            }
+        }
+    }
+
+    private fun openNote(note: WorkNote, type: String, back: Action) {
+        result(note.title, "선택한 ${type}를 불러오는 중입니다.", back)
         val expected = revision
         notes.execute {
             val response = runCatching { workspaceApi.readNote(session.token, note.id) }
@@ -231,7 +265,7 @@ internal class VehicleWorkController(
                     result(note.title, content.ifBlank { "이 노트에 표시할 텍스트가 없습니다." }, back)
                 }.onFailure {
                     if (it is WorkspaceSessionEnded) onSessionEnded()
-                    else result(note.title, "업무 노트를 불러오지 못했습니다.", back)
+                    else result(note.title, "${type}를 불러오지 못했습니다.", back)
                 }
             }
         }
