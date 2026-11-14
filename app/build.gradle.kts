@@ -3,7 +3,9 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.2.21"
 }
 
-val shiftApiOrigin = providers.gradleProperty("shiftApiOrigin").orElse("http://10.0.2.2:8787")
+val emulatorApiOrigin = "http://10.0.2.2:8787"
+val shiftApiOrigin = providers.gradleProperty("shiftApiOrigin").orElse(emulatorApiOrigin)
+val shiftReleaseApiOrigin = providers.gradleProperty("shiftReleaseApiOrigin").orElse(emulatorApiOrigin)
 
 android {
     namespace = "com.shift.vehicle"
@@ -31,9 +33,9 @@ android {
             buildConfigField("String", "SHIFT_API_ORIGIN", "\"$origin\"")
         }
         release {
-            val origin = providers.gradleProperty("shiftReleaseApiOrigin").orElse("").get().trimEnd('/')
-            require(origin.isEmpty() || Regex("https://[A-Za-z0-9.:-]+").matches(origin)) {
-                "shiftReleaseApiOrigin must be an HTTPS origin without a path"
+            val origin = shiftReleaseApiOrigin.get().trimEnd('/')
+            require(origin == emulatorApiOrigin || Regex("https://[A-Za-z0-9.:-]+").matches(origin)) {
+                "shiftReleaseApiOrigin must be $emulatorApiOrigin or an HTTPS origin without a path"
             }
             buildConfigField("String", "SHIFT_API_ORIGIN", "\"$origin\"")
         }
