@@ -3,6 +3,7 @@ package com.shift.vehicle
 import ai.pleos.playground.navi.constants.NaviErrorCode
 import ai.pleos.playground.navi.data.DestinationInfo
 import ai.pleos.playground.navi.data.RouteInfo
+import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import android.content.Context
@@ -69,11 +70,18 @@ internal class PleosNavigation(
                 }
             }
 
+            override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
+                main.post {
+                    if (pending === this@RouteRequest && routeSent && !verifying) verify()
+                }
+            }
+
             override fun onDestinationInfo(destinationInfo: DestinationInfo) {
                 main.post {
                     if (pending !== this@RouteRequest || !verifying) return@post
-                    if (destinationInfo.poiId == destination.poiId &&
-                        destinationInfo.poiSubId == destination.poiSubId) {
+                    // The provider omits the sub-ID in replies for the route's default entry.
+                    val subId = destinationInfo.poiSubId.orEmpty().ifBlank { "0" }
+                    if (destinationInfo.poiId == destination.poiId && subId == destination.poiSubId) {
                         finish(true, "Pleos 내비게이션에서 요청한 목적지를 확인했어요.")
                     } else if (checkOnly) {
                         finish(false, "Pleos에서 현재 안내 중인 목적지가 요청과 일치하지 않아요.")
