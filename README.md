@@ -9,6 +9,7 @@ SHIFT는 공용차를 배정받은 직원이 현대차의 Pleos Connect 차량 �
 ## 기획 문서
 
 - [전체 기획안 v1.1](docs/PLAN.md)
+- [최종 기획안 v1.2](https://github.com/rlatmddn0211/SHIFT/blob/aeda8d4c3b82be50da4d7a23d391b591580507f5/docs/PLAN.md)
 - [결정 기록](docs/DECISIONS.md)
 - [공모전 작품 소개 초안](docs/SUBMISSION_DRAFT.md)
 - [공식 접수양식에 본문을 넣은 Word 초안](docs/SHIFT_application_draft.docx)
@@ -18,11 +19,19 @@ Word 초안에는 작품 소개 본문이 들어 있습니다. 참가자 정보,
 
 ## Pleos에서 화면 실행
 
-`app/`에는 Figma 시안을 구현한 Android 차량용 **오늘 방문 업무** 화면이 있습니다. 일정은 예시 데이터입니다. **내비로 보내기**를 누르면 주소와 시연 안내가 표시됩니다. 실제 목적지 전송과 업무 계정 연동은 아직 구현하지 않았습니다.
+Pleos의 **공용차 로그인** 화면에서 QR을 스캔하고 모바일 웹에 6자리 일회용 PIN을 입력하면 **오늘 방문 업무** 화면으로 자동 전환됩니다. 직원 A와 B는 각자 다른 예시 일정을 봅니다. PIN은 2분 동안 유효하며 5회 틀리면 잠깁니다. 다른 직원의 승인이 완료되면 이전 차량 세션이 만료됩니다.
 
-JDK 17 또는 21, Android SDK Platform 34, Build Tools 35.0.0, Platform-Tools를 준비합니다. `ANDROID_HOME`을 Android SDK 경로로 설정한 뒤 Pleos Connect Emulator를 실행합니다. [공식 에뮬레이터 가이드](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)
+이번 시연은 로컬 승인 서버, 메모리 세션, 시연 계정을 사용합니다. 실제 Microsoft 365 계정 연동, QR 로그아웃과 목적지 전송은 후속 구현입니다. **내비로 보내기**를 누르면 주소와 시연 안내가 표시됩니다.
 
-저장소 루트에서 실행합니다. 아래 Gradle 옵션은 현재 작업 폴더처럼 Windows 경로에 한글이 있는 경우에 사용합니다.
+Node.js 24.12 이상, JDK 17 또는 21, Android SDK Platform 34, Build Tools 35.0.0, Platform-Tools를 준비합니다. `ANDROID_HOME`을 Android SDK 경로로 설정한 뒤 Pleos Connect Emulator를 실행합니다. [공식 에뮬레이터 가이드](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)
+
+저장소 루트에서 서버를 실행한 상태로 둡니다. 기본 주소는 `http://127.0.0.1:8787`이며, 에뮬레이터는 `http://10.0.2.2:8787`로 같은 서버에 접속합니다.
+
+```powershell
+npm --prefix server start
+```
+
+다른 터미널에서 빌드하고 차량 앱을 엽니다. 아래 Gradle 옵션은 Windows 작업 경로에 한글이 있는 경우에 사용합니다.
 
 ```powershell
 .\gradlew.bat '-Pandroid.overridePathCheck=true' :app:assembleDebug :app:lintDebug
@@ -33,7 +42,15 @@ $carUser = (& $adb -s $pleosSerial shell am get-current-user).Trim()
 & $adb -s $pleosSerial shell am start --user $carUser -n com.shift.vehicle/.MainActivity
 ```
 
-Pleos Connect Emulator 2.1.0에서 API 34, 전체 디스플레이 2560 × 1440 px, 160 dpi로 검증했습니다. 가로 앱 창은 실제 **1682 × 1210 dp**였습니다. 같은 에뮬레이터에서 앱 창을 **847 × 839 dp**로 줄여 한 열 배치와 스크롤을 확인했습니다. Asta Sans와 Noto Sans KR은 이 화면에 필요한 글리프를 포함하며, 라이선스는 `app/src/main/assets/fonts/`에 있습니다.
+같은 PC에서는 차량에 표시된 QR의 주소를 PC 브라우저에서 열 수 있습니다. 실제 휴대폰으로 시연하려면 USB 디버깅이 허용된 테스트용 Android 휴대폰을 PC에 연결하고 그 휴대폰에 포트를 전달한 뒤, 카메라로 차량 화면의 QR을 스캔합니다. [Android 포트 전달 안내](https://developer.android.com/develop/ui/views/layout/webapps/access-local-server)
+
+```powershell
+& $adb -s '<휴대폰 시리얼>' reverse tcp:8787 tcp:8787
+```
+
+Pleos Connect Emulator 2.1.0의 API 34, 2560 × 1440 px, 160 dpi 환경에서 검증했습니다. 실제 가로 앱 창은 **1682 × 1210 dp**였습니다. 휴대폰 크기로 설정한 Chrome에서 화면의 QR 주소를 열고 틀린 PIN 거부, 올바른 PIN 승인, 앱 자동 전환과 승인 재사용 차단을 확인했습니다. `npm --prefix server test`로 만료, 입력 제한, 동시 승인, 세션 교대를 재현할 수 있습니다.
+
+[Pleos QR·PIN 대기 화면](docs/images/shift-qr-login-pleos.png) · [모바일 승인 페이지](docs/images/shift-qr-login-mobile.png) · [승인 후 오늘 방문 업무](docs/images/shift-qr-login-approved.png)
 
 ## Word 초안 갱신
 

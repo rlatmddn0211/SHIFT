@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.hardware.type.automotive" android:required="true" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="false"
@@ -8,6 +9,7 @@
         android:theme="@style/Theme.Shift">
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="true"
             android:resizeableActivity="true"
             android:screenOrientation="landscape">

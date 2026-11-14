@@ -23,11 +23,13 @@ import kotlin.math.roundToInt
 internal class TodayVisitsView(
     context: Context,
     private val onSendToNavigation: (String) -> Unit,
+    private val employeeName: String,
 ) : ScrollView(context) {
     private val astaBold = loadFont("asta_sans.ttf", 700)
     private val notoRegular = loadFont("noto_sans_kr.ttf", 400)
     private val notoMedium = loadFont("noto_sans_kr.ttf", 500)
     private val notoBold = loadFont("noto_sans_kr.ttf", 700)
+    private val visits = if (employeeName == "직원 B") EMPLOYEE_B_VISITS else EMPLOYEE_A_VISITS
     private var laidOutWidth = 0
     private var designScale = 1f
 
@@ -81,7 +83,11 @@ internal class TodayVisitsView(
     }
 
     private fun buildHeader(): LinearLayout = vertical().apply {
-        append(label("SHIFT", 34, astaBold, SKY_BLUE))
+        append(horizontal().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(label("SHIFT", 34, astaBold, SKY_BLUE), LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+            addView(label(employeeName, 28, notoMedium, TEXT_MUTED), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT))
+        })
         append(label("오늘 방문 업무", 60, notoBold).apply { isAccessibilityHeading = true }, top = 14)
     }
 
@@ -91,10 +97,10 @@ internal class TodayVisitsView(
         background = rounded(HYUNDAI_BLUE, 28)
 
         append(label("다음 방문", 28, notoMedium, SKY_BLUE).apply { isAccessibilityHeading = true })
-        append(label("10:30", if (wide) 64 else 50, astaBold), top = 18)
-        append(label("한빛모빌리티 미팅", if (wide) 49 else 42, notoBold), top = 18)
-        append(label(NEXT_ADDRESS, 30, notoRegular), top = 18)
-        append(label("장소 변경 · 09:12 수신 메일", 27, notoMedium, SKY_BLUE), top = 18)
+        append(label(visits.time, if (wide) 64 else 50, astaBold), top = 18)
+        append(label(visits.title, if (wide) 49 else 42, notoBold), top = 18)
+        append(label(visits.address, 30, notoRegular), top = 18)
+        append(label(visits.change, 27, notoMedium, SKY_BLUE), top = 18)
         addView(buildNavigationButton(), LinearLayout.LayoutParams(px(344), WRAP_CONTENT).apply {
             topMargin = px(18)
         })
@@ -122,13 +128,13 @@ internal class TodayVisitsView(
         background = RippleDrawable(
             ColorStateList.valueOf(0x260B1728), surfaces, rounded(Color.WHITE, 20),
         )
-        setOnClickListener { onSendToNavigation(NEXT_ADDRESS) }
+        setOnClickListener { onSendToNavigation(visits.address) }
     }
 
     private fun buildLaterVisits(): LinearLayout = vertical().apply {
         append(label("이후 일정", 30, notoBold).apply { isAccessibilityHeading = true })
         appendDivider()
-        for ((time, title) in laterVisits) {
+        for ((time, title) in visits.later) {
             val row = horizontal().apply {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(label(time, 32, astaBold, TEXT_MUTED), LinearLayout.LayoutParams(px(108), WRAP_CONTENT))
@@ -192,11 +198,18 @@ internal class TodayVisitsView(
             .build()
             ?: Typeface.create(Typeface.DEFAULT, weight, false)
 
+    private data class DemoVisits(
+        val time: String,
+        val title: String,
+        val address: String,
+        val change: String,
+        val later: List<Pair<String, String>>,
+    )
+
     private companion object {
         const val WIDE_BREAKPOINT = 1200f
         const val WIDE_REFERENCE = 1700f
         const val COMPACT_REFERENCE = 840f
-        const val NEXT_ADDRESS = "경기 성남시 분당구 판교역로 235"
 
         val NAVY = Color.rgb(11, 23, 40)
         val HYUNDAI_BLUE = Color.rgb(0, 44, 95)
@@ -205,6 +218,19 @@ internal class TodayVisitsView(
         val TEXT_MUTED = Color.rgb(175, 192, 213)
         val DIVIDER = Color.rgb(43, 62, 86)
 
-        val laterVisits = listOf("13:00" to "성우테크 방문", "15:20" to "서진솔루션 미팅")
+        val EMPLOYEE_A_VISITS = DemoVisits(
+            time = "10:30",
+            title = "한빛모빌리티 미팅",
+            address = "경기 성남시 분당구 판교역로 235",
+            change = "장소 변경 · 09:12 수신 메일",
+            later = listOf("13:00" to "성우테크 방문", "15:20" to "서진솔루션 미팅"),
+        )
+        val EMPLOYEE_B_VISITS = DemoVisits(
+            time = "11:00",
+            title = "한결로보틱스 방문",
+            address = "경기 수원시 영통구 광교로 145",
+            change = "장소 변경 · 09:40 수신 메일",
+            later = listOf("14:00" to "가온테크 미팅", "16:10" to "동림솔루션 방문"),
+        )
     }
 }
