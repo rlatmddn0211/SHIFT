@@ -1,89 +1,47 @@
-# SHIFT 클릭형 웹 프로토타입
+# SHIFT 프로젝트 소개와 클릭형 시연
 
-확정된 Pleos 차량 시안을 바탕으로 차량 9개, 휴대폰 모바일 웹 7개, 주요 상태 8개를 구현한 디자인 검토용 웹 앱입니다. React·TypeScript·Vite로 작성했으며 화면은 실제 텍스트·버튼·입력·SVG로 구성됩니다.
+SHIFT는 공용차로 외근하는 직원이 오늘 방문 일정과 변경 주소를 확인하고, 목적지를 Pleos 내비로 보내고, 휴대폰에서 저장한 방문 메모를 차량에서 이어서 확인하는 앱입니다. 교대 시 차량의 개인 세션을 종료합니다.
 
-## 실행
+[SHIFT 공개 시연](https://shift-pleos-demo.pages.dev/) · [Pleos 에뮬레이터와 실제 서버에서 확인한 연동 결과](https://github.com/rlatmddn0211/SHIFT/blob/33c7065f89cd497b993d2718f1695d8bdb043eab/docs/SHIFT_WEBAPP_PLEOS.md)
 
-Node.js 24 LTS 기준으로 확인했습니다.
+## 로컬에서 열기
 
-```powershell
-cd prototype
-npm ci
-npm run dev
-```
-
-브라우저에서 http://localhost:5173 을 엽니다. 원격으로 접속할 때는 실행 로그의 Tailscale Network 주소를 사용합니다. 실행 중인 PC와 같은 Tailscale망에 연결되어 있어야 합니다.
+Node.js 24에서 저장소 루트 기준으로 실행합니다. 브라우저에서 [localhost:5173](http://127.0.0.1:5173/)을 엽니다.
 
 ```powershell
-npm run build
-npm run preview
+npm --prefix prototype ci
+npm --prefix prototype run dev
 ```
 
-## 둘러보기
+## 대표 시연
 
-- **나란히 보기:** 차량과 휴대폰 화면을 함께 조작합니다. 왼쪽의 6단계로 이동하거나 각 기기의 화면 선택 메뉴를 사용합니다.
-- **전체 화면:** 기본 16개와 상태 8개를 종류별로 살펴보고 원하는 화면을 엽니다.
-- **로고:** Hyundai Blue SVG, 투명 PNG, 흰색 SVG를 내려받습니다.
-- **발표 모드:** 검토용 사이드바를 접어 화면 녹화 공간을 넓힙니다.
-- **직원 A/B:** 휴대폰 사용자 전환 후 차량 인증을 승인하면 해당 직원의 업무·노트로 바뀝니다.
-- **다시 시작:** 시연 데이터와 세션을 초기화합니다.
+1. **QR·PIN 시연 시작**을 누릅니다. 차량 QR을 클릭하고 차량의 6자리 PIN을 휴대폰 화면에 입력해 **로그인 승인**합니다.
+2. 차량에서 **오늘 방문 업무**가 열리면 휴대폰의 **내 방문 메모 → 메모 작성**에서 내용을 입력합니다. 방문 연결은 선택 사항입니다.
+3. **메모 저장**을 누르고, 정차 상태에서 Pleos의 **방문 메모**를 열어 같은 제목과 본문을 확인합니다.
+4. 차량 세션 종료를 휴대폰에서 승인합니다. 직원 B로 전환하면 B의 업무와 메모를 확인할 수 있습니다.
 
-개별 화면은 `?view=vehicle&screen=V3`, `?view=phone&screen=P6`처럼 직접 열 수 있습니다. `user=B`를 추가하면 B 직원의 시안으로 열립니다.
+**전체 화면**에서 좌석, 목적지 전달, 차량 음성 메모와 오류 상태를 둘러볼 수 있습니다. **발표 모드**는 사이드바를 접습니다. **다시 시작** 또는 새로고침하면 시연 데이터가 초기화됩니다.
 
-## 대표 시연 흐름
+공개 시연은 예시 계정과 일정을 사용합니다. 차량·휴대폰 화면은 한 브라우저 탭에서 같은 상태를 공유합니다. QR을 실물 휴대폰으로 스캔하면 해당 기기에 별도의 시연이 열립니다.
 
-1. 다시 시작 → 차량 QR과 휴대폰의 확인 코드 비교 → 이 차량에 연결
-2. 탑승 준비 → 좌석 적용 확인 → 오늘 방문 업무
-3. 방문 업무 제목 → 관련 메일 원문 → 목적지 확인 → 내비로 보내기
-4. 방문 후 메모 → 음성 메모 시작 → 녹음 마치기 → 내용 확인·수정 → 저장
-5. 휴대폰에서 같은 메모 확인 → 개인 세션 종료 → 휴대폰 승인
-6. 직원 B로 전환하고 인증 → B의 일정·노트와 이전 정보 가림 확인
+이전 시안의 화면별 이미지와 로고는 [디자인 자료](../docs/design/prototype-v2/README.md)에 있습니다. 단독 화면은 `?view=vehicle&screen=V3` 또는 `?view=phone&screen=P6`으로 엽니다.
 
-차량 화면 선택 메뉴에서 QR 만료, 서비스 미연결, 좌석 미지원, 목적지 전달 실패, 메모 저장 결과, 잠금을 확인할 수 있습니다. 메모 확인·결과 화면의 외부 검토 도구에서 저장 실패를 시연합니다. 주행 상태도 외부 도구에서 바꿉니다.
+## 공개 배포 갱신
 
-## 디자인 자료
+```powershell
+npm --prefix prototype ci
+npm --prefix prototype run build
+```
 
-- [최종 나란히 보기](../docs/design/prototype-v2/overview.png)
-- [24개 페이지별 PNG와 화면 목록](../docs/design/prototype-v2/README.md)
-- [로고 SVG](src/assets/shift-logo.svg) · [로고 PNG](../docs/design/prototype-v2/SHIFT-wordmark-hyundai-blue.png)
-- [확정 참고 시안](../docs/design/prototype-v2/pleos-reference.png) · [디자인 콘셉트](../docs/design/prototype-v2/web-concept.png)
+Cloudflare 대시보드의 **Workers 및 Pages → shift-pleos-demo → 새 배포 만들기**에서 프로덕션 환경을 선택해 `prototype/dist`의 정적 빌드를 업로드합니다. ZIP을 쓸 때는 `index.html`과 `assets/`가 압축 파일 최상위에 있도록 압축합니다. [Cloudflare Pages Direct Upload 안내](https://developers.cloudflare.com/pages/get-started/direct-upload/)
 
-차량의 SHIFT 앱 윈도우는 **840 × 1184**, 휴대폰 화면은 **390 × 844**로 설계했습니다. 전체 차량 디스플레이와 앱 윈도우의 규격을 구분합니다. 한글은 Noto Sans KR, 영문·숫자는 Asta Sans를 자체 호스팅합니다.
-
-## 시연 동작과 실제 연동의 구분
-
-| 항목 | 현재 프로토타입 |
-| --- | --- |
-| Microsoft 로그인·Outlook | 가상의 A/B 직원과 일정·메일을 사용하며 실제 계정에 접근하지 않음 |
-| QR·PIN | 모바일 시안으로 이동하는 QR과 예시 확인 코드. 실제 인증 서버·만료 정책은 후속 구현 |
-| 음성 메모 | 예시 문장을 불러와 편집. 실제 마이크·STT 연동은 후속 구현 |
-| 음성 브리핑 | 예시 요약과 브라우저 음성 합성 사용. 실제 AI·Pleos TTS 연동은 후속 구현 |
-| OneNote 저장 | 사용자별 브라우저 메모리에서 저장·조회. Microsoft Graph에는 기록하지 않음 |
-| 좌석 | 시안용 상대 위치 값과 정차 확인. 실제 차량 이동·SDK 범위 매핑은 후속 검증 |
-| 내비게이션 | 전달 성공·실패의 UI 상태. 실제 Pleos 경로 요청은 후속 구현 |
-| 음악 | 휴대폰 공식 앱과 차량 오디오 연결 안내·사용자 확인 |
-| 잠금 | 상태 메뉴에서 시연. 비활동 시간과 실제 자동 잠금 정책은 후속 확정 |
-
-새로고침하면 예시 데이터가 초기화됩니다. 개인 세션을 종료하면 차량의 화면과 작성 중 메모는 정리하고, 저장한 예시 메모는 해당 직원의 휴대폰 화면에서 계속 확인하도록 구성했습니다. 예약·대여·반납·차량 관리 화면은 확장 범위입니다.
+Vite 산출물의 상대 주소는 GitHub Pages의 저장소 경로에서도 동작합니다. 이 저장소에서 GitHub Pages를 선택하려면 비공개 저장소를 지원하는 플랜과 게시 설정 권한이 필요합니다. [GitHub Pages 게시 설정](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
 ## 검증
 
 ```powershell
-npm exec playwright -- install chromium --only-shell
-npm run test:e2e
+npm --prefix prototype exec -- playwright install chromium --only-shell
+npm --prefix prototype run test:e2e
 ```
 
-2026-11-14 기준 TypeScript·배포용 빌드와 Chromium의 다음 6개 흐름을 통과했습니다.
-
-- 인증 → 좌석 적용 확인 → 원본 업무 확인 → 목적지 → 메모 저장 → 세션 종료
-- A/B 교대 후 이전 업무·노트·미저장 메모 가림
-- 목적지·메모 실패 복구, 주행 상태 제한, 잠금
-- 업무 서비스 미연결 상태의 차량 인증·좌석 이용
-- 좌석 프로필 삭제 후 재저장 전 적용 차단
-- 24개 화면 목록과 SVG·PNG 다운로드
-
-Browser 플러그인이 없어 Playwright Chromium을 사용했습니다. 1600 × 1100의 검토 화면, 390 × 844 모바일, 840 × 1184 차량 앱과 24개 개별 화면을 캡처해 확인했습니다. 페이지 제목·화면 내용·오류 오버레이·브라우저 콘솔·가로 넘침을 확인했고 앱 오류와 가로 잘림은 없었습니다.
-
-참고 시안과 바탕색, 방문 카드, 버튼 색상, 한글·숫자 글꼴, 방문 시간·주소·일정 행, 정보 우선순위를 비교했습니다. 시간 숫자에는 실제 Asta Sans 커스텀 폰트 사용도 Chrome CDP로 확인했습니다. 새 SHIFT 로고, 확정 기능에 필요한 하단 메뉴와 브리핑 진입을 추가했습니다. 검토 중 아래 버튼이 밀리던 탑승 준비·좌석·휴대폰 설정 화면의 간격을 수정해 다시 확인했습니다.
-
-검증 범위는 웹 시안입니다. 실제 Pleos 에뮬레이터·차량·Microsoft 서비스 연동 결과는 후속 시제품에서 별도로 확인합니다.
+Playwright는 소개 페이지에서 시작하는 QR·PIN과 웹 메모 작성, Pleos 상세, 운전자 간 분리, 정차 제한을 비롯해 좌석, 목적지 전달과 기존 음성 메모 흐름을 확인합니다.

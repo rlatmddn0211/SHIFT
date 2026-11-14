@@ -18,6 +18,7 @@ export interface PrototypeState {
   vehicle: VehicleScreen;
   phone: PhoneScreen;
   phoneUser: UserId;
+  phoneAuthenticated: UserId[];
   vehicleUser: UserId | null;
   connected: boolean;
   locked: boolean;
@@ -25,6 +26,8 @@ export interface PrototypeState {
   visitIndex: number;
   profiles: Record<UserId, Profile>;
   savedNotes: Record<UserId, PersonalNote[]>;
+  activeNoteId: string | null;
+  phoneNoteSaved: boolean;
   memo: string;
   recording: boolean;
   saveFailed: boolean;
@@ -40,8 +43,20 @@ function profileFor(id: UserId): Profile {
   return { outlook: true, oneNote: true, briefing: true, importantMail: true, selectedNotes: users[id].notes.slice(0, 2).map((n) => n.id), noteSection: 'SHIFT 방문 메모', seatHeight: users[id].seatHeight, seatPosition: users[id].seatPosition, seatSaved: true };
 }
 
-export function initialState(start = false): PrototypeState {
-  return { vehicle: start ? 'V1' : 'V3', phone: start ? 'P6' : 'P6', phoneUser: 'A', vehicleUser: start ? null : 'A', connected: !start, locked: false, driving: false, visitIndex: 0, profiles: { A: profileFor('A'), B: profileFor('B') }, savedNotes: { A: [], B: [] }, memo: '', recording: false, saveFailed: false, seatApplied: false, navigationSent: false, musicConnected: false, qrCode: '4826', approvalError: '', toast: '' };
+export function initialState(): PrototypeState {
+  return {
+    vehicle: 'V1', phone: 'P2', phoneUser: 'A', phoneAuthenticated: [], vehicleUser: null,
+    connected: false, locked: false, driving: false, visitIndex: 0,
+    profiles: { A: profileFor('A'), B: profileFor('B') }, savedNotes: { A: [], B: [] },
+    activeNoteId: null, phoneNoteSaved: false, memo: '', recording: false, saveFailed: false,
+    seatApplied: false, navigationSent: false, musicConnected: false, qrCode: '482615', approvalError: '', toast: '',
+  };
+}
+
+function nextPin(pin: string) { return pin === '482615' ? '739184' : '482615'; }
+
+function authorizePhone(state: PrototypeState): UserId[] {
+  return state.phoneAuthenticated.includes(state.phoneUser) ? state.phoneAuthenticated : [...state.phoneAuthenticated, state.phoneUser];
 }
 
 export type Action =
@@ -66,29 +81,45 @@ export type Action =
   | { type: 'TRANSCRIBE' }
   | { type: 'MEMO'; text: string }
   | { type: 'SAVE'; fail?: boolean }
+  | { type: 'SAVE_PHONE_NOTE'; text: string; visitId: string }
+  | { type: 'READ_VISIT_NOTE'; noteId: string }
   | { type: 'QR_REFRESH' }
   | { type: 'TOAST'; text: string };
 
 function reducer(state: PrototypeState, action: Action): PrototypeState {
   switch (action.type) {
-    case 'VEHICLE': return { ...state, vehicle: action.screen, toast: '' };
-    case 'PHONE': return { ...state, phone: action.screen, approvalError: '', toast: '' };
-    case 'USER': return { ...state, phoneUser: action.user, vehicle: 'V1', phone: 'P6', memo: '', recording: false, approvalError: '', navigationSent: false, toast: '' };
+    case 'VEHICLE': return { ...state, vehicle: action.screen, activeNoteId: null, toast: '' };
+    case 'PHONE': return { ...state, phone: action.screen, phoneNoteSaved: false, approvalError: '', toast: '' };
+    case 'USER': return { ...state, phoneUser: action.user, vehicle: 'V1', phone: 'P2', vehicleUser: null, connected: false, locked: false, activeNoteId: null, phoneNoteSaved: false, memo: '', recording: false, approvalError: '', navigationSent: false, qrCode: nextPin(state.qrCode), toast: '' };
     case 'APPROVE':
-      if (action.pin !== state.qrCode) return { ...state, approvalError: '코드가 일치하지 않아요. 차량 화면을 다시 확인해 주세요.' };
-      return { ...state, vehicleUser: state.phoneUser, connected: true, locked: false, vehicle: 'S2', phone: 'P2', visitIndex: 0, memo: '', recording: false, saveFailed: false, seatApplied: false, navigationSent: false, approvalError: '', toast: '' };
+      if (state.vehicle === 'S1') return { ...state, approvalError: '인증 시간이 만료됐어요. 차량에서 새 PIN을 발급해 주세요.' };
+      if (state.vehicle !== 'V1' || state.phone !== 'P6') return { ...state, approvalError: '차량에서 로그인 QR을 다시 열어 주세요.' };
+      if (action.pin !== state.qrCode) return { ...state, approvalError: '차량 화면의 PIN을 확인하세요.' };
+      return { ...state, phoneAuthenticated: authorizePhone(state), vehicleUser: state.phoneUser, connected: true, locked: false,
+        vehicle: 'V3', phone: 'P2', activeNoteId: null, phoneNoteSaved: false, visitIndex: 0, memo: '', recording: false,
+        saveFailed: false, seatApplied: false, navigationSent: false, approvalError: '', toast: '' };
     case 'LOADED': return state.vehicle === 'S2' ? { ...state, vehicle: 'V2' } : state;
-    case 'END': return state.vehicleUser !== state.phoneUser ? { ...state, toast: '본인 계정으로 연결한 세션만 종료할 수 있어요.' } : { ...state, connected: false, locked: false, vehicleUser: null, vehicle: 'V1', phone: 'P2', memo: '', recording: false, visitIndex: 0, navigationSent: false, seatApplied: false, toast: '이 차량의 개인 세션을 종료했어요.' };
+    case 'END': return state.vehicleUser !== state.phoneUser ? { ...state, toast: '본인 계정으로 연결한 세션만 종료할 수 있어요.' } : { ...state, connected: false, locked: false, vehicleUser: null, vehicle: 'V1', phone: 'P2', activeNoteId: null, phoneNoteSaved: false, memo: '', recording: false, visitIndex: 0, navigationSent: false, seatApplied: false, qrCode: nextPin(state.qrCode), toast: '이 차량의 개인 세션을 종료했어요.' };
     case 'LOCK': return { ...state, vehicle: 'S8', locked: true, memo: '', recording: false, toast: '' };
-    case 'RESET': return initialState(true);
+    case 'RESET': return initialState();
     case 'STEP': {
-      const vehicle: VehicleScreen = (['V1', 'V2', 'V3', 'V5', 'V7', 'V9'] as const)[action.step] ?? 'V3';
-      return { ...state, vehicle, phone: action.step === 0 ? 'P6' : action.step === 5 ? 'P7' : 'P2', connected: action.step !== 0, locked: false, vehicleUser: action.step === 0 ? null : state.phoneUser, memo: '', recording: false, visitIndex: 0, navigationSent: false, toast: '' };
+      const vehicle: VehicleScreen = (['V1', 'V2', 'V3', 'V3', 'V10', 'V9'] as const)[action.step] ?? 'V3';
+      const phone: PhoneScreen = (['P2', 'P2', 'P2', 'P9', 'P8', 'P7'] as const)[action.step] ?? 'P2';
+      const connected = action.step !== 0;
+      return { ...state, vehicle, phone, phoneAuthenticated: connected ? authorizePhone(state) : state.phoneAuthenticated,
+        connected, locked: false, vehicleUser: connected ? state.phoneUser : null, activeNoteId: null, phoneNoteSaved: false,
+        memo: '', recording: false, visitIndex: 0, navigationSent: false, approvalError: '', toast: '' };
     }
     case 'PREVIEW': {
-      if (action.screen.startsWith('P')) return { ...state, phone: action.screen as PhoneScreen, toast: '', approvalError: '' };
+      if (action.screen.startsWith('P')) {
+        const screen = action.screen as PhoneScreen;
+        return { ...state, phone: screen, phoneAuthenticated: screen === 'P8' || screen === 'P9' ? authorizePhone(state) : state.phoneAuthenticated, phoneNoteSaved: false, toast: '', approvalError: '' };
+      }
       const screen = action.screen as VehicleScreen;
-      return { ...state, vehicle: screen, vehicleUser: state.phoneUser, connected: !['V1', 'S1'].includes(screen), locked: screen === 'S8', recording: false, memo: ['S6', 'S7'].includes(screen) ? sampleMemo : '', saveFailed: false, navigationSent: false, visitIndex: 0, toast: '' };
+      const connected = !['V1', 'S1'].includes(screen);
+      return { ...state, vehicle: screen, vehicleUser: connected ? state.phoneUser : null, connected, locked: screen === 'S8',
+        activeNoteId: screen === 'V11' ? state.savedNotes[state.phoneUser][0]?.id ?? null : null,
+        recording: false, memo: ['S6', 'S7'].includes(screen) ? sampleMemo : '', saveFailed: false, navigationSent: false, visitIndex: 0, toast: '' };
     }
     case 'VISIT': return { ...state, visitIndex: action.index, vehicle: 'V4', navigationSent: false, toast: '' };
     case 'PROFILE': return { ...state, seatApplied: action.patch.seatSaved === false && action.user === state.vehicleUser ? false : state.seatApplied, profiles: { ...state.profiles, [action.user]: { ...state.profiles[action.user], ...action.patch } } };
@@ -113,7 +144,23 @@ function reducer(state: PrototypeState, action: Action): PrototypeState {
       const note: PersonalNote = { id: 'saved-' + Date.now(), title: visit.title + ' · 방문 메모', body: state.memo.trim(), updated: '방금 저장' };
       return { ...state, vehicle: 'S7', saveFailed: false, savedNotes: { ...state.savedNotes, [userId]: [note, ...state.savedNotes[userId]] }, toast: '' };
     }
-    case 'QR_REFRESH': return { ...state, qrCode: state.qrCode === '4826' ? '7391' : '4826', vehicle: 'V1', approvalError: '', toast: '새 확인 코드를 발급했어요.' };
+    case 'SAVE_PHONE_NOTE': {
+      const userId = state.phoneUser;
+      if (state.phone !== 'P9' || !state.phoneAuthenticated.includes(userId)) return state;
+      const body = action.text.trim();
+      if (!body || action.text.length > 3000) return state;
+      const visit = users[userId].visits.find((item) => item.id === action.visitId);
+      if (action.visitId && !visit) return state;
+      const title = visit ? `${visit.title} · 방문 메모` : '방문 메모';
+      const note: PersonalNote = { id: `web-${state.savedNotes[userId].length + 1}`, title, body, updated: '방금 저장' };
+      return { ...state, phone: 'P8', phoneNoteSaved: true, savedNotes: { ...state.savedNotes, [userId]: [note, ...state.savedNotes[userId]] } };
+    }
+    case 'READ_VISIT_NOTE': {
+      const userId = state.vehicleUser;
+      if (state.driving || state.locked || !state.connected || !userId || state.vehicle !== 'V10' || !state.savedNotes[userId].some((note) => note.id === action.noteId)) return state;
+      return { ...state, vehicle: 'V11', activeNoteId: action.noteId };
+    }
+    case 'QR_REFRESH': return { ...state, qrCode: nextPin(state.qrCode), vehicle: 'V1', vehicleUser: null, connected: false, approvalError: '', toast: '새 PIN을 발급했어요.' };
     case 'TOAST': return { ...state, toast: action.text };
   }
 }

@@ -1,18 +1,30 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
+
+async function approveVehicle(car: Locator, phone: Locator) {
+  const pin = car.locator('.v-pin');
+  await expect(pin).toHaveText(/^\d{6}$/);
+  await car.getByRole('button', { name: '휴대폰 승인 화면 열기' }).click();
+  await phone.getByLabel('차량 화면의 PIN').fill(await pin.innerText());
+  await phone.getByRole('button', { name: '로그인 승인', exact: true }).click();
+  await expect(car.getByRole('heading', { name: '오늘 방문 업무' })).toBeVisible();
+}
 
 test('인증 → 좌석 확인 → 업무 근거 → 목적지 → 메모 저장 → 세션 종료', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/');
+  await page.goto('/?view=demo');
   const car = page.locator('.vehicle-app');
   const phone = page.locator('.phone-app');
   await page.getByRole('button', { name: '다시 시작', exact: true }).click();
   await expect(car).toHaveAttribute('data-screen', 'V1');
-  await phone.getByLabel('차량 확인 코드').fill('9999');
-  await phone.getByRole('button', { name: '이 차량에 연결', exact: true }).click();
-  await expect(phone.getByRole('alert')).toContainText('코드가 일치하지');
-  await phone.getByLabel('차량 확인 코드').fill('4826');
-  await phone.getByRole('button', { name: '이 차량에 연결', exact: true }).click();
+  await car.getByRole('button', { name: '휴대폰 승인 화면 열기' }).click();
+  const pin = phone.getByLabel('차량 화면의 PIN');
+  await expect(pin).toHaveValue('');
+  await pin.fill('999999');
+  await phone.getByRole('button', { name: '로그인 승인', exact: true }).click();
+  await expect(phone.getByRole('alert')).toContainText('차량 화면의 PIN을 확인하세요.');
+  await approveVehicle(car, phone);
+  await page.getByLabel('차량 화면 선택').selectOption('V2');
   await expect(car).toHaveAttribute('data-screen', 'V2');
   await car.locator('.v-seat-card').getByRole('button', { name: '적용', exact: true }).click();
   await car.getByRole('button', { name: '확인하고 적용' }).click();
@@ -45,7 +57,7 @@ test('인증 → 좌석 확인 → 업무 근거 → 목적지 → 메모 저장
 });
 
 test('A/B 교대 후 이전 업무·노트·미저장 메모를 표시하지 않는다', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?view=demo');
   const car = page.locator('.vehicle-app');
   const phone = page.locator('.phone-app');
   await page.getByLabel('차량 화면 선택').selectOption('S6');
@@ -53,10 +65,8 @@ test('A/B 교대 후 이전 업무·노트·미저장 메모를 표시하지 않
   await page.getByRole('button', { name: '직원 B', exact: true }).click();
   await expect(car).not.toContainText('김민서');
   await expect(car).not.toContainText('직원 A에게만');
-  await phone.getByRole('button', { name: '이 차량에 연결', exact: true }).click();
-  await expect(car).toHaveAttribute('data-screen', 'V2');
+  await approveVehicle(car, phone);
   await expect(car).toContainText('이준');
-  await car.getByRole('button', { name: '오늘 방문 업무', exact: true }).click();
   await expect(car).toContainText('다온에너지');
   await expect(car).not.toContainText('한빛모빌리티');
   await car.getByRole('button', { name: '노트', exact: true }).click();
@@ -66,7 +76,7 @@ test('A/B 교대 후 이전 업무·노트·미저장 메모를 표시하지 않
 });
 
 test('목적지·메모 실패 복구, 주행 제한, 잠금 후 개인정보 가림', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?view=demo');
   const car = page.locator('.vehicle-app');
   await page.getByLabel('차량 화면 선택').selectOption('S5');
   await expect(car).toContainText('판교역로 235');
@@ -91,7 +101,7 @@ test('목적지·메모 실패 복구, 주행 제한, 잠금 후 개인정보 �
 });
 
 test('업무 서비스 연결을 선택하지 않아도 차량 인증과 좌석은 이용 가능', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?view=demo');
   const car = page.locator('.vehicle-app');
   const phone = page.locator('.phone-app');
   await page.getByRole('button', { name: '다시 시작', exact: true }).click();
@@ -100,8 +110,8 @@ test('업무 서비스 연결을 선택하지 않아도 차량 인증과 좌석�
   await phone.getByRole('switch', { name: 'Outlook 일정·메일' }).click();
   await phone.getByRole('switch', { name: 'OneNote', exact: true }).click();
   await phone.getByRole('button', { name: '설정 완료' }).click();
-  await page.getByLabel('휴대폰 화면 선택').selectOption('P6');
-  await phone.getByRole('button', { name: '이 차량에 연결', exact: true }).click();
+  await approveVehicle(car, phone);
+  await page.getByLabel('차량 화면 선택').selectOption('V2');
   await expect(car).toHaveAttribute('data-screen', 'V2');
   await expect(car).toContainText('업무 연결을 선택하지 않았어요');
   await car.getByRole('button', { name: '좌석', exact: true }).click();
@@ -111,7 +121,7 @@ test('업무 서비스 연결을 선택하지 않아도 차량 인증과 좌석�
 });
 
 test('삭제한 좌석 프로필은 다시 저장하기 전 적용하지 않는다', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?view=demo');
   const car = page.locator('.vehicle-app');
   const phone = page.locator('.phone-app');
   await page.getByLabel('휴대폰 화면 선택').selectOption('P5');
@@ -123,12 +133,12 @@ test('삭제한 좌석 프로필은 다시 저장하기 전 적용하지 않는�
   await expect(car.getByRole('button', { name: '저장한 위치 적용' })).toBeEnabled();
 });
 
-test('24개 화면 목록과 로고 SVG·PNG 다운로드', async ({ page }) => {
-  await page.goto('/');
+test('28개 화면 목록과 로고 SVG·PNG 다운로드', async ({ page }) => {
+  await page.goto('/?view=demo');
   await page.locator('.studio-nav').getByRole('button', { name: /전체 화면/ }).click();
-  await expect(page.locator('.gallery-card')).toHaveCount(24);
+  await expect(page.locator('.gallery-card')).toHaveCount(28);
   await page.locator('.gallery-filters').getByRole('button', { name: /휴대폰/ }).click();
-  await expect(page.locator('.gallery-card')).toHaveCount(7);
+  await expect(page.locator('.gallery-card')).toHaveCount(9);
   await page.getByRole('button', { name: '로고', exact: true }).click();
   const svgDownload = page.waitForEvent('download');
   await page.getByRole('link', { name: 'SVG 저장', exact: true }).click();
@@ -136,4 +146,59 @@ test('24개 화면 목록과 로고 SVG·PNG 다운로드', async ({ page }) => 
   const pngDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: 'PNG 저장', exact: true }).click();
   expect((await pngDownload).suggestedFilename()).toContain('.png');
+});
+
+test('웹에서 작성한 방문 메모를 주차 중 같은 운전자의 Pleos에서 확인한다', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: '외근 때 반복되는 일을 줄입니다.' })).toBeVisible();
+  await page.getByRole('button', { name: 'QR·PIN 시연 시작' }).click();
+  const car = page.locator('.vehicle-app');
+  const phone = page.locator('.phone-app');
+  await expect(car.getByRole('heading', { name: '공용차 로그인' })).toBeVisible();
+  await expect(phone.getByRole('button', { name: '내 방문 메모', exact: true })).toHaveCount(0);
+  await approveVehicle(car, phone);
+
+  await phone.getByRole('button', { name: '내 방문 메모', exact: true }).click();
+  await phone.getByRole('button', { name: '메모 작성', exact: true }).click();
+  const save = phone.getByRole('button', { name: '메모 저장', exact: true });
+  const editor = phone.getByRole('textbox', { name: '메모 내용', exact: true });
+  await expect(save).toBeDisabled();
+  await editor.fill('   ');
+  await expect(save).toBeDisabled();
+  await editor.fill('취소할 초안');
+  await phone.getByRole('button', { name: '취소', exact: true }).click();
+  await phone.getByRole('button', { name: '메모 작성', exact: true }).click();
+  await expect(editor).toHaveValue('');
+  const memo = '새 제안서 초안을 금요일까지 공유하기.';
+  await phone.getByLabel('연결할 방문 (선택)').selectOption({ label: '한빛모빌리티 미팅' });
+  await editor.fill(memo);
+  await save.click();
+  await expect(phone.getByRole('status')).toContainText('메모를 저장했습니다.');
+  await expect(phone).toContainText(memo);
+
+  await car.getByRole('button', { name: '방문 메모', exact: true }).click();
+  await car.getByRole('button', { name: '한빛모빌리티 미팅 · 방문 메모', exact: true }).click();
+  await expect(car.getByRole('heading', { name: '한빛모빌리티 미팅 · 방문 메모' })).toBeVisible();
+  await expect(car).toContainText(memo);
+  await page.getByRole('button', { name: '정차 중', exact: true }).click();
+  await expect(car).not.toContainText(memo);
+  await expect(car).toContainText('정차 후 확인하거나 입력');
+  await page.getByRole('button', { name: '주행 중', exact: true }).click();
+
+  await page.getByRole('button', { name: '직원 B', exact: true }).click();
+  await approveVehicle(car, phone);
+  await car.getByRole('button', { name: '방문 메모', exact: true }).click();
+  await expect(car).toContainText('저장한 방문 메모가 없습니다.');
+  await phone.getByRole('button', { name: '내 방문 메모', exact: true }).click();
+  await expect(phone).toContainText('저장한 방문 메모가 없습니다.');
+  await expect(phone).not.toContainText(memo);
+
+  await phone.getByRole('button', { name: '메모 작성', exact: true }).click();
+  const unlinkedMemo = '일정을 연결하지 않은 직원 B 메모';
+  await editor.fill(unlinkedMemo);
+  await save.click();
+  await expect(phone).toContainText(unlinkedMemo);
+  await car.getByRole('button', { name: '방문 메모', exact: true }).click();
+  await expect(car).toContainText('일정을 연결하지 않은 직원 B 메모');
+  await expect(car).not.toContainText(memo);
 });

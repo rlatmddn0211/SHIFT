@@ -1,6 +1,6 @@
 export type UserId = 'A' | 'B';
-export type VehicleScreen = 'V1' | 'V2' | 'V3' | 'V4' | 'V5' | 'V6' | 'V7' | 'V8' | 'V9' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S7' | 'S8';
-export type PhoneScreen = 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7';
+export type VehicleScreen = 'V1' | 'V2' | 'V3' | 'V4' | 'V5' | 'V6' | 'V7' | 'V8' | 'V9' | 'V10' | 'V11' | 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S7' | 'S8';
+export type PhoneScreen = 'P1' | 'P2' | 'P3' | 'P4' | 'P5' | 'P6' | 'P7' | 'P8' | 'P9';
 export type ScreenId = VehicleScreen | PhoneScreen;
 
 export interface Visit {
@@ -60,10 +60,10 @@ export const users: Record<UserId, Employee> = {
 };
 
 export const sampleMemo = '금요일까지 수정 견적을 보내기로 했습니다. 도입 일정은 다음 주 화요일에 다시 확인합니다.';
-export const steps = ['차량 인증', '탑승 준비', '방문 업무', '목적지 전달', '방문 후 메모', '세션 종료'];
+export const steps = ['차량 QR·PIN', '탑승 준비', '오늘 방문 업무', '웹에서 메모 작성', 'Pleos에서 메모 확인', '세션 종료'];
 
 export const screens: { id: ScreenId; device: 'vehicle' | 'phone'; name: string; description: string; state?: boolean }[] = [
-  { id: 'V1', device: 'vehicle', name: '시작·QR 인증', description: '휴대폰으로 차량과 확인 코드를 승인합니다.' },
+  { id: 'V1', device: 'vehicle', name: '공용차 QR·PIN 로그인', description: 'QR을 열고 차량 화면의 6자리 PIN으로 로그인합니다.' },
   { id: 'V2', device: 'vehicle', name: '탑승 준비', description: '업무·좌석·오디오 연결을 준비합니다.' },
   { id: 'V3', device: 'vehicle', name: '업무 홈', description: '오늘 방문과 변경된 업무를 확인합니다.' },
   { id: 'V4', device: 'vehicle', name: '방문 업무 상세', description: '일정과 관련 메일의 근거를 함께 봅니다.' },
@@ -72,13 +72,17 @@ export const screens: { id: ScreenId; device: 'vehicle' | 'phone'; name: string;
   { id: 'V7', device: 'vehicle', name: '방문 후 음성 메모', description: '주차 후 상담 내용을 기록합니다.' },
   { id: 'V8', device: 'vehicle', name: '좌석 프로필', description: '현재 위치를 저장하고 선호 위치를 적용합니다.' },
   { id: 'V9', device: 'vehicle', name: '개인 세션 종료', description: '휴대폰 승인으로 차량의 개인 접근을 끝냅니다.' },
+  { id: 'V10', device: 'vehicle', name: '방문 메모', description: '주차 상태에서 같은 계정으로 저장한 방문 메모를 찾습니다.' },
+  { id: 'V11', device: 'vehicle', name: '방문 메모 상세', description: '휴대폰 웹에서 쓴 메모의 본문을 차량에서 확인합니다.' },
   { id: 'P1', device: 'phone', name: '시작·Microsoft 로그인', description: '업무 계정으로 SHIFT를 시작합니다.' },
   { id: 'P2', device: 'phone', name: '내 SHIFT 홈', description: '연결한 환경과 현재 차량을 관리합니다.' },
   { id: 'P3', device: 'phone', name: '업무 연결·브리핑 설정', description: '가져올 업무와 안내 범위를 선택합니다.' },
   { id: 'P4', device: 'phone', name: 'OneNote 선택', description: '가져올 노트와 메모 저장 위치를 정합니다.' },
   { id: 'P5', device: 'phone', name: '좌석 프로필 관리', description: '내 착석 환경을 확인합니다.' },
-  { id: 'P6', device: 'phone', name: '차량 연결 승인', description: '차량·확인 코드·계정을 확인합니다.' },
+  { id: 'P6', device: 'phone', name: '차량 로그인 승인', description: '차량 화면의 PIN을 입력해 내 업무를 엽니다.' },
   { id: 'P7', device: 'phone', name: '개인 세션 종료 승인', description: 'QR 종료와 원격 종료를 확인합니다.' },
+  { id: 'P8', device: 'phone', name: '내 방문 메모', description: '내가 저장한 방문 메모를 읽고 새 메모를 작성합니다.' },
+  { id: 'P9', device: 'phone', name: '방문 메모 작성', description: '메모 내용을 입력하고 필요하면 방문 일정을 연결합니다.' },
   { id: 'S1', device: 'vehicle', name: 'QR 만료·인증 오류', description: '새 코드를 발급받아 다시 연결합니다.', state: true },
   { id: 'S2', device: 'vehicle', name: '개인 환경 불러오기', description: '현재 인증한 직원의 정보만 불러옵니다.', state: true },
   { id: 'S3', device: 'vehicle', name: '업무 미연결·조회 실패', description: '업무 연결이 없어도 좌석과 세션을 이용합니다.', state: true },
@@ -93,11 +97,11 @@ export const baseVehicleScreens = screens.filter((s) => s.device === 'vehicle' &
 export const phoneScreens = screens.filter((s) => s.device === 'phone');
 export const stateScreens = screens.filter((s) => s.state);
 
-export function getStep(screen: VehicleScreen): number {
+export function getStep(screen: VehicleScreen, phone: PhoneScreen): number {
   if (screen === 'V1' || screen === 'S1' || screen === 'S8') return 0;
-  if (screen === 'V2' || screen === 'V8' || screen === 'S2' || screen === 'S4') return 1;
-  if (screen === 'V3' || screen === 'V4' || screen === 'V6' || screen === 'S3') return 2;
-  if (screen === 'V5' || screen === 'S5') return 3;
-  if (screen === 'V7' || screen === 'S6' || screen === 'S7') return 4;
-  return 5;
+  if (screen === 'V9') return 5;
+  if (['V10', 'V11', 'V7', 'S6', 'S7'].includes(screen)) return 4;
+  if (phone === 'P8' || phone === 'P9') return 3;
+  if (['V2', 'V8', 'S2', 'S4'].includes(screen)) return 1;
+  return 2;
 }
