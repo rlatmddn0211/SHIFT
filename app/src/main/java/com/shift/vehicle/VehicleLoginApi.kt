@@ -7,7 +7,10 @@ import java.net.URL
 
 internal class VehicleLoginApi(private val origin: String = BuildConfig.SHIFT_API_ORIGIN) {
     data class Challenge(val id: String, val approvalUrl: String, val pin: String, val expiresAt: Long)
+    data class LogoutChallenge(val id: String, val approvalUrl: String, val expiresAt: Long)
     data class Session(val token: String, val employeeName: String)
+
+    enum class LogoutStatus { PENDING, APPROVED, EXPIRED, REPLACED }
 
     sealed interface Approval {
         data object Pending : Approval
@@ -25,8 +28,12 @@ internal class VehicleLoginApi(private val origin: String = BuildConfig.SHIFT_AP
         }
     }
 
-    fun approval(challenge: Challenge): Approval {
-        val response = request("GET", "$REQUESTS/${challenge.id}")
+    fun approval(challenge: Challenge): Approval = loginStatus("GET", challenge)
+
+    fun cancel(challenge: Challenge): Approval = loginStatus("DELETE", challenge)
+
+    private fun loginStatus(method: String, challenge: Challenge): Approval {
+        val response = request(method, "$REQUESTS/${challenge.id}")
         if (response.code == 404 || response.code == 410) return Approval.Expired
         if (response.code != 200) throw IOException("Approval status unavailable")
         return response.body.run {
@@ -38,6 +45,34 @@ internal class VehicleLoginApi(private val origin: String = BuildConfig.SHIFT_AP
                 "approved" -> Approval.Approved(Session(getString("sessionToken"), getString("employeeName")))
                 else -> throw IOException("Unexpected approval status")
             }
+        }
+    }
+
+    fun beginLogout(session: Session): LogoutChallenge {
+        val response = request("POST", LOGOUTS, session.token)
+        if (response.code == 401) throw InactiveSessionException()
+        if (response.code != 201) throw IOException("Logout request rejected")
+        return response.body.run {
+            LogoutChallenge(getString("requestId"), getString("approvalUrl"), getLong("expiresAt"))
+        }
+    }
+
+    fun logoutStatus(session: Session, challenge: LogoutChallenge): LogoutStatus =
+        logoutStatus("GET", session, challenge)
+
+    fun cancelLogout(session: Session, challenge: LogoutChallenge): LogoutStatus =
+        logoutStatus("DELETE", session, challenge)
+
+    private fun logoutStatus(method: String, session: Session, challenge: LogoutChallenge): LogoutStatus {
+        val response = request(method, "$LOGOUTS/${challenge.id}", session.token)
+        if (response.code == 404 || response.code == 410) return LogoutStatus.EXPIRED
+        if (response.code != 200) throw IOException("Logout status unavailable")
+        return when (response.body.getString("status")) {
+            "pending" -> LogoutStatus.PENDING
+            "approved" -> LogoutStatus.APPROVED
+            "expired" -> LogoutStatus.EXPIRED
+            "replaced" -> LogoutStatus.REPLACED
+            else -> throw IOException("Unexpected logout status")
         }
     }
 
@@ -76,8 +111,11 @@ internal class VehicleLoginApi(private val origin: String = BuildConfig.SHIFT_AP
 
     private data class Response(val code: Int, val body: JSONObject)
 
+    class InactiveSessionException : IOException("Vehicle session is inactive")
+
     private companion object {
         const val VEHICLE = "/api/vehicles/hyundai-demo-01"
         const val REQUESTS = "$VEHICLE/login-requests"
+        const val LOGOUTS = "$VEHICLE/logout-requests"
     }
 }

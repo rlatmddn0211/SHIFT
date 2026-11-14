@@ -8,6 +8,7 @@ type Page = {
     vehicleName?: string;
     notice?: string;
     action?: string;
+    purpose?: "logout";
     selectedEmployee?: string;
     error?: string;
 };
@@ -21,7 +22,11 @@ function escapeHtml(value: string): string {
 
 export function approvalPage(page: Page): string {
     let form = "";
-    if (page.action) {
+    if (page.action && page.purpose === "logout") {
+        form = `<form method="post" action="${escapeHtml(page.action)}">
+            <button type="submit">로그아웃 승인</button>
+        </form>`;
+    } else if (page.action) {
         const employeeOptions = Array.from(employees, ([id, name]) => `
             <option value="${escapeHtml(id)}"${id === page.selectedEmployee ? " selected" : ""}>${escapeHtml(name)}</option>
         `).join("");

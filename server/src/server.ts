@@ -11,6 +11,7 @@ const MAX_ATTEMPTS = 5;
 const VEHICLE_ID = "hyundai-demo-01";
 const VEHICLE_NAME = "현대 공용차 01";
 const OPAQUE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+const MOBILE_COOKIE = "shift_demo_mobile";
 
 type LoginStatus = "pending" | "approved" | "expired" | "locked" | "replaced";
 type LoginRequest = {
@@ -26,8 +27,19 @@ type LoginRequest = {
 type Session = {
     token: string;
     requestId: string;
+    employeeId: string;
     employeeName: string;
     expiresAt: number;
+};
+type LogoutStatus = "pending" | "approved" | "expired" | "replaced";
+type LogoutRequest = {
+    id: string;
+    approvalToken: string;
+    sessionToken: string;
+    employeeId: string;
+    employeeName: string;
+    expiresAt: number;
+    status: LogoutStatus;
 };
 
 class HttpError extends Error {
@@ -50,6 +62,15 @@ function originFrom(value: string): string {
 
 function token(): string {
     return randomBytes(32).toString("base64url");
+}
+
+function bearerFrom(request: IncomingMessage): string | undefined {
+    return request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/i)?.[1];
+}
+
+function sameToken(first: string | undefined, second: string): boolean {
+    return first !== undefined && OPAQUE_TOKEN.test(first) &&
+        timingSafeEqual(Buffer.from(first), Buffer.from(second));
 }
 
 function send(response: ServerResponse, status: number, type: string, body: string): void {
@@ -93,8 +114,34 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
     const origin = originFrom(publicOrigin);
     const requests = new Map<string, LoginRequest>();
     const approvalIds = new Map<string, string>();
+    const logoutRequests = new Map<string, LogoutRequest>();
+    const logoutApprovalIds = new Map<string, string>();
+    const mobileSessions = new Map<string, { employeeId: string; expiresAt: number }>();
     let activeSession: Session | undefined;
     let pendingId: string | undefined;
+
+    function activeFor(request: IncomingMessage): Session | undefined {
+        if (activeSession && activeSession.expiresAt > now() && sameToken(bearerFrom(request), activeSession.token)) {
+            return activeSession;
+        }
+    }
+
+    function mobileEmployee(request: IncomingMessage): string | undefined {
+        const entry = request.headers.cookie?.split(";").map((piece) => piece.trim())
+            .find((piece) => piece.startsWith(`${MOBILE_COOKIE}=`));
+        const mobile = entry && mobileSessions.get(entry.slice(MOBILE_COOKIE.length + 1));
+        if (mobile && mobile.expiresAt > now()) return mobile.employeeId;
+    }
+
+    function authorizeMobile(response: ServerResponse, employeeId: string): void {
+        for (const [id, mobile] of mobileSessions) {
+            if (mobile.expiresAt <= now() || mobileSessions.size >= MAX_REQUESTS) mobileSessions.delete(id);
+        }
+        const id = token();
+        mobileSessions.set(id, { employeeId, expiresAt: now() + SESSION_TTL_MS });
+        const secure = origin.startsWith("https:") ? "; Secure" : "";
+        response.setHeader("Set-Cookie", `${MOBILE_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure}`);
+    }
 
     function statusOf(login: LoginRequest): LoginStatus {
         if (login.status === "pending" && login.expiresAt <= now()) return "expired";
@@ -139,6 +186,35 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
             approvalUrl: `${origin}/approve/${login.approvalToken}`,
             pin: login.pin,
             expiresAt: login.expiresAt,
+        });
+    }
+
+    function logoutStatus(logout: LogoutRequest): LogoutStatus {
+        if (logout.status !== "pending") return logout.status;
+        if (logout.expiresAt <= now()) return "expired";
+        if (activeSession?.token !== logout.sessionToken) return "replaced";
+        if (activeSession.expiresAt <= now()) return "expired";
+        return "pending";
+    }
+
+    function createLogout(response: ServerResponse, session: Session): void {
+        const keepAfter = now() - TERMINAL_RETENTION_MS;
+        for (const logout of logoutRequests.values()) {
+            if (logoutStatus(logout) === "pending") logout.status = "replaced";
+            if (logout.expiresAt <= keepAfter || logoutRequests.size >= MAX_REQUESTS) {
+                logoutRequests.delete(logout.id);
+                logoutApprovalIds.delete(logout.approvalToken);
+            }
+        }
+        const logout: LogoutRequest = {
+            id: token(), approvalToken: token(), sessionToken: session.token,
+            employeeId: session.employeeId, employeeName: session.employeeName,
+            expiresAt: now() + LOGIN_TTL_MS, status: "pending",
+        };
+        logoutRequests.set(logout.id, logout);
+        logoutApprovalIds.set(logout.approvalToken, logout.id);
+        json(response, 201, {
+            requestId: logout.id, approvalUrl: `${origin}/logout/${logout.approvalToken}`, expiresAt: logout.expiresAt,
         });
     }
 
@@ -221,11 +297,54 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
 
         const previous = activeSession && requests.get(activeSession.requestId);
         if (previous) previous.status = "replaced";
-        activeSession = { token: token(), requestId: login.id, employeeName, expiresAt: now() + SESSION_TTL_MS };
+        activeSession = { token: token(), requestId: login.id, employeeId: employee, employeeName, expiresAt: now() + SESSION_TTL_MS };
         login.status = "approved";
         login.sessionToken = activeSession.token;
         login.employeeName = employeeName;
+        authorizeMobile(response, employee);
         response.setHeader("Location", formPage.action);
+        send(response, 303, "text/plain", "");
+    }
+
+    function handleLogout(request: IncomingMessage, response: ServerResponse, approvalToken: string): void {
+        const id = logoutApprovalIds.get(approvalToken);
+        const logout = id && logoutRequests.get(id);
+        if (!logout) {
+            html(response, 404, { title: "종료 요청을 찾을 수 없습니다", notice: "차량 화면에서 새 QR을 스캔하세요." });
+            return;
+        }
+        const status = logoutStatus(logout);
+        if (status === "expired" || status === "replaced") {
+            html(response, status === "expired" ? 410 : 409, {
+                title: status === "expired" ? "종료 요청 만료" : "종료 요청이 취소되었습니다", vehicleName: VEHICLE_NAME,
+                notice: "차량 화면에서 새 QR을 스캔하세요.",
+            });
+            return;
+        }
+        if (mobileEmployee(request) !== logout.employeeId) {
+            html(response, 403, {
+                title: "차량 로그인에 사용한 휴대폰이 필요합니다", vehicleName: VEHICLE_NAME,
+                notice: "같은 브라우저에서 QR을 다시 스캔하세요.",
+            });
+            return;
+        }
+        if (status === "approved") {
+            html(response, request.method === "POST" ? 409 : 200, {
+                title: "로그아웃 완료", vehicleName: VEHICLE_NAME, notice: "차량에서 개인 업무가 닫혔습니다.",
+            });
+            return;
+        }
+        const action = `/logout/${approvalToken}`;
+        if (request.method === "GET") {
+            html(response, 200, {
+                title: "차량 로그아웃 승인", vehicleName: VEHICLE_NAME,
+                notice: `${logout.employeeName}의 차량 업무를 종료합니다.`, action, purpose: "logout",
+            });
+            return;
+        }
+        logout.status = "approved";
+        activeSession = undefined;
+        response.setHeader("Location", action);
         send(response, 303, "text/plain", "");
     }
 
@@ -241,34 +360,56 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
         }
         const vehicleApi = `/api/vehicles/${VEHICLE_ID}`;
         const loginRequests = `${vehicleApi}/login-requests`;
+        const logouts = `${vehicleApi}/logout-requests`;
         if (method === "POST" && path === loginRequests) {
             createLogin(response);
             return;
         }
-        if (method === "GET" && path.startsWith(`${loginRequests}/`)) {
+        if ((method === "GET" || method === "DELETE") && path.startsWith(`${loginRequests}/`)) {
             const login = requests.get(path.slice(loginRequests.length + 1));
             if (!login) {
                 json(response, 404, { status: "expired" });
                 return;
             }
+            if (method === "DELETE" && statusOf(login) === "pending") login.status = "replaced";
             const status = statusOf(login);
             const session = status === "approved" ? { sessionToken: login.sessionToken, employeeName: login.employeeName } : {};
             json(response, 200, { status, ...session });
             return;
         }
         if (method === "GET" && path === `${vehicleApi}/session`) {
-            const bearer = request.headers.authorization?.match(/^Bearer ([A-Za-z0-9_-]{43})$/i)?.[1];
-            if (!activeSession || activeSession.expiresAt <= now() || !bearer ||
-                !timingSafeEqual(Buffer.from(bearer), Buffer.from(activeSession.token))) {
+            const session = activeFor(request);
+            if (!session) {
                 json(response, 401, { error: "session_inactive" });
                 return;
             }
-            json(response, 200, { employeeName: activeSession.employeeName });
+            json(response, 200, { employeeName: session.employeeName });
+            return;
+        }
+        if (method === "POST" && path === logouts) {
+            const session = activeFor(request);
+            if (session) createLogout(response, session);
+            else json(response, 401, { error: "session_inactive" });
+            return;
+        }
+        if ((method === "GET" || method === "DELETE") && path.startsWith(`${logouts}/`)) {
+            const logout = logoutRequests.get(path.slice(logouts.length + 1));
+            if (!logout || !sameToken(bearerFrom(request), logout.sessionToken)) {
+                json(response, 404, { error: "not_found" });
+                return;
+            }
+            if (method === "DELETE" && logoutStatus(logout) === "pending") logout.status = "replaced";
+            json(response, 200, { status: logoutStatus(logout) });
             return;
         }
         const approvalToken = path.startsWith("/approve/") ? path.slice("/approve/".length) : "";
         if ((method === "GET" || method === "POST") && OPAQUE_TOKEN.test(approvalToken)) {
             await handleApproval(request, response, approvalToken);
+            return;
+        }
+        const logoutToken = path.startsWith("/logout/") ? path.slice("/logout/".length) : "";
+        if ((method === "GET" || method === "POST") && OPAQUE_TOKEN.test(logoutToken)) {
+            handleLogout(request, response, logoutToken);
             return;
         }
         json(response, 404, { error: "not_found" });

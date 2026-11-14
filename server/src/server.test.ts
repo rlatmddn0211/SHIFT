@@ -8,6 +8,7 @@ const VEHICLE = "/api/vehicles/hyundai-demo-01";
 const PUBLIC_ORIGIN = "http://example.test:8787";
 
 type Challenge = { requestId: string; approvalUrl: string; pin: string; expiresAt: number };
+type Logout = Omit<Challenge, "pin">;
 
 async function fixture(t: TestContext) {
     let time = 1_700_000_000_000;
@@ -42,6 +43,18 @@ async function fixture(t: TestContext) {
         },
         session(token: string) {
             return get(`${VEHICLE}/session`, { headers: { Authorization: `Bearer ${token}` } });
+        },
+        async logout(sessionToken: string): Promise<Logout> {
+            const response = await get(`${VEHICLE}/logout-requests`, {
+                method: "POST", headers: { Authorization: `Bearer ${sessionToken}` },
+            });
+            assert.equal(response.status, 201);
+            return response.json();
+        },
+        logoutStatus(logout: Logout, sessionToken: string, method = "GET") {
+            return get(`${VEHICLE}/logout-requests/${logout.requestId}`, {
+                method, headers: { Authorization: `Bearer ${sessionToken}` },
+            });
         },
     };
 }
@@ -126,4 +139,70 @@ test("concurrent approval can complete only once and employee B replaces employe
     api.advance(8 * 60 * 60_000);
     assert.equal((await api.session(employeeB.sessionToken)).status, 401);
     assert.deepEqual(await api.status(second), { status: "expired" });
+});
+
+test("logout requires the same mobile identity, revokes the session and cannot execute twice", async (t) => {
+    const api = await fixture(t);
+    const login = await api.create();
+    const loginApproval = await api.approve(login);
+    const mobile = loginApproval.headers.get("set-cookie")?.split(";")[0];
+    assert.ok(mobile);
+    const { sessionToken } = await api.status(login);
+    const logout = await api.logout(sessionToken);
+    const url = new URL(logout.approvalUrl);
+    assert.equal(url.origin, PUBLIC_ORIGIN);
+    assert.match(url.pathname, /^\/logout\/[A-Za-z0-9_-]{43}$/);
+    assert.ok(!url.href.includes(sessionToken));
+    assert.ok(!url.href.includes(logout.requestId));
+    assert.ok(!url.search);
+    assert.ok(!("pin" in logout));
+    assert.equal((await api.get(`${VEHICLE}/logout-requests`, { method: "POST" })).status, 401);
+    assert.equal((await api.get(url.pathname)).status, 403);
+    assert.equal((await api.get(url.pathname, { method: "POST", redirect: "manual" })).status, 403);
+    assert.equal((await api.session(sessionToken)).status, 200);
+
+    const headers = { Cookie: mobile };
+    assert.match(await (await api.get(url.pathname, { headers })).text(), /차량 로그아웃 승인/);
+    assert.deepEqual(await (await api.logoutStatus(logout, sessionToken)).json(), { status: "pending" });
+    assert.equal((await api.get(url.pathname, { method: "POST", headers, redirect: "manual" })).status, 303);
+    assert.deepEqual(await (await api.logoutStatus(logout, sessionToken)).json(), { status: "approved" });
+    assert.equal((await api.session(sessionToken)).status, 401);
+    assert.match(await (await api.get(url.pathname, { headers })).text(), /로그아웃 완료/);
+    assert.equal((await api.get(url.pathname, { method: "POST", headers, redirect: "manual" })).status, 409);
+});
+
+test("stale logout cannot revoke a later driver and canceled or expired requests are inert", async (t) => {
+    const api = await fixture(t);
+    const first = await api.create();
+    const mobileA = (await api.approve(first)).headers.get("set-cookie")?.split(";")[0];
+    assert.ok(mobileA);
+    const employeeA = await api.status(first);
+    const expired = await api.logout(employeeA.sessionToken);
+    api.advance(2 * 60_000);
+    const mobile = { Cookie: mobileA };
+    assert.equal((await api.get(new URL(expired.approvalUrl).pathname, { method: "POST", headers: mobile })).status, 410);
+
+    const canceled = await api.logout(employeeA.sessionToken);
+    assert.deepEqual(await (await api.logoutStatus(canceled, employeeA.sessionToken, "DELETE")).json(), { status: "replaced" });
+    assert.equal((await api.get(new URL(canceled.approvalUrl).pathname, { method: "POST", headers: mobile })).status, 409);
+    const stale = await api.logout(employeeA.sessionToken);
+    const second = await api.create();
+    assert.equal((await api.session(employeeA.sessionToken)).status, 200);
+    await api.approve(second, "employee-b");
+    const employeeB = await api.status(second);
+    assert.equal((await api.get(new URL(stale.approvalUrl).pathname, { method: "POST", headers: mobile })).status, 409);
+    assert.equal((await api.session(employeeB.sessionToken)).status, 200);
+    assert.equal((await api.logoutStatus(stale, employeeB.sessionToken)).status, 404);
+});
+
+test("canceling a pending handover keeps the active employee and bars late approval", async (t) => {
+    const api = await fixture(t);
+    const first = await api.create();
+    await api.approve(first);
+    const employeeA = await api.status(first);
+    const handover = await api.create();
+    const cancel = await api.get(`${VEHICLE}/login-requests/${handover.requestId}`, { method: "DELETE" });
+    assert.deepEqual(await cancel.json(), { status: "replaced" });
+    assert.equal((await api.approve(handover, "employee-b")).status, 409);
+    assert.equal((await api.session(employeeA.sessionToken)).status, 200);
 });
