@@ -18,6 +18,7 @@ SHIFT는 공용차를 배정받은 직원이 현대차의 Pleos Connect 차량 �
 - [편집 가능한 Figma와 클릭 시연](docs/SHIFT_V12_FIGMA.md)
 - [업무 계정과 모바일 설정](docs/SHIFT_WORKSPACE.md)
 - [Pleos v1.2 기능별 실행 결과](docs/SHIFT_V12_DEMO.md)
+- [모바일 웹앱과 Pleos 연동](docs/SHIFT_WEBAPP_PLEOS.md)
 
 Word 초안에는 작품 소개 본문이 들어 있습니다. 참가자 정보, 팀명, 전원 동의·서명과 최종 참고자료 링크는 제출 전에 작성합니다.
 
@@ -32,6 +33,8 @@ Node.js 24.12 이상, JDK 17 또는 21, Android SDK Platform 34, Build Tools 35.
 저장소 루트에서 서버를 실행한 상태로 둡니다. 기본 주소는 `http://127.0.0.1:8787`이며, 에뮬레이터는 `http://10.0.2.2:8787`로 같은 서버에 접속합니다.
 
 ```powershell
+npm --prefix webapp ci
+npm --prefix webapp run build
 npm --prefix server start
 ```
 

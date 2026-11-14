@@ -76,6 +76,14 @@ test("vehicle and QR tokens are separate and only vehicle polling returns the se
     const page = await api.get(api.approvalPath(login));
     assert.equal(page.headers.get("referrer-policy"), "no-referrer");
     assert.match(await page.text(), /현대 공용차 01.*|차량 로그인 승인/);
+    const mobileModel = { Accept: "application/json" };
+    const pendingModel = await api.get(api.approvalPath(login), { headers: mobileModel });
+    assert.equal(pendingModel.headers.get("vary"), "Accept");
+    const pending = await pendingModel.json();
+    assert.equal(pending.kind, "approval");
+    assert.equal(pending.status, "pending");
+    assert.ok(!Object.hasOwn(pending, "pin"));
+    assert.ok(!Object.hasOwn(pending, "requestId"));
     const result = await api.approve(login);
     assert.equal(result.status, 303);
     assert.equal(result.headers.get("location"), api.approvalPath(login));
@@ -93,6 +101,10 @@ test("vehicle and QR tokens are separate and only vehicle polling returns the se
     assert.ok(!successPage.includes(state.sessionToken));
     const cookie = result.headers.getSetCookie()[0]?.split(";", 1)[0];
     assert.ok(cookie);
+    const approvedModel = await (await api.get(api.approvalPath(login), { headers: { ...mobileModel, cookie } })).json();
+    assert.equal(approvedModel.status, "approved");
+    assert.equal(approvedModel.profileUrl, "/mobile");
+    assert.ok(!Object.hasOwn(approvedModel, "sessionToken"));
     assert.match(await (await api.get("/mobile", { headers: { cookie } })).text(), /직원 A · 시연 계정/);
     const work = await api.get(`${VEHICLE}/workspace`, { headers: { Authorization: `Bearer ${state.sessionToken}` } });
     assert.equal(work.status, 200);

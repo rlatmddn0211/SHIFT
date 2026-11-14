@@ -3,3 +3,5 @@
 /app/build/
 /app/src/debug/assets/shift-stt-fixture.pcm
 /local.properties
+/webapp/dist/
+/webapp/node_modules/

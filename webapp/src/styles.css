@@ -1,0 +1,44 @@
+:root {
+  color-scheme: dark;
+  background: #0b1728;
+  color: #f7f8fa;
+  font-family: 'Noto Sans KR', 'Malgun Gothic', system-ui, sans-serif;
+  --sky: #aacae6;
+  --muted: #afc0d5;
+  --line: #536b85;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; }
+.phone { max-width: 30rem; margin: auto; padding: 2rem 1.25rem; }
+header { margin-bottom: 1.85rem; }
+header img { width: 6.5rem; display: block; }
+h1 { font-size: clamp(1.6rem, 7vw, 2rem); line-height: 1.28; margin: 0 0 .8rem; }
+h2 { font-size: 1.1rem; margin: 0; }
+p { margin: .45rem 0; line-height: 1.55; word-break: keep-all; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.card { border: 1px solid #2b4562; border-radius: 1rem; background: #10213a; padding: 1rem; }
+.vehicle { display: flex; align-items: center; gap: .85rem; margin: 1.35rem 0; background: #002c5f; }
+.vehicle svg, .notes svg { flex: none; color: var(--sky); }
+form, .links { display: grid; gap: .95rem; margin: 1.4rem 0; }
+label { display: grid; gap: .45rem; font-weight: 650; }
+input, select, button, .button { width: 100%; min-height: 3rem; border-radius: .75rem; font: inherit; }
+input, select { border: 1px solid var(--line); padding: .75rem; color: inherit; background: #10213a; }
+input { letter-spacing: .12em; }
+input::placeholder { letter-spacing: normal; color: var(--muted); }
+button, .button {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  border: 1px solid transparent; padding: .65rem 1rem; background: var(--sky);
+  color: #0b1728; text-decoration: none; text-align: center; font-weight: 750; cursor: pointer;
+}
+button:disabled { opacity: .65; cursor: wait; }
+.secondary { color: var(--sky); background: transparent; border-color: var(--line); }
+.text-link { display: inline-block; padding: .55rem 0; color: var(--sky); }
+:focus-visible { outline: 3px solid var(--sky); outline-offset: 3px; }
+.error, .connection-error { color: #ffc5bd; }
+.connection-error { margin-bottom: 1rem; }
+.notes { display: grid; gap: .75rem; list-style: none; margin: 1.25rem 0; padding: 0; }
+.notes li { display: flex; align-items: flex-start; gap: .8rem; }
+.notes li > div { min-width: 0; }
+.notes h2 { overflow-wrap: anywhere; }
+.note-body { color: var(--muted); white-space: pre-wrap; }

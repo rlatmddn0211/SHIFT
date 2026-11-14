@@ -2,6 +2,7 @@ import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { approvalPage, employees } from "./approval-page.ts";
+import { servePhoneAsset, writePhonePage } from "./mobile-web.ts";
 import { createWorkspace } from "./workspace.ts";
 
 const LOGIN_TTL_MS = 2 * 60_000;
@@ -40,6 +41,10 @@ type LogoutRequest = {
     employeeName: string;
     expiresAt: number;
     status: LogoutStatus;
+};
+type ApprovalView = Omit<Parameters<typeof approvalPage>[0], "purpose"> & {
+    kind: "approval" | "logout";
+    status: LoginStatus | "not-found" | "login-required";
 };
 
 class HttpError extends Error {
@@ -88,8 +93,12 @@ function json(response: ServerResponse, status: number, body: object): void {
     send(response, status, "application/json", JSON.stringify(body));
 }
 
-function html(response: ServerResponse, status: number, page: Parameters<typeof approvalPage>[0]): void {
-    send(response, status, "text/html", approvalPage(page));
+async function phonePage(request: IncomingMessage, response: ServerResponse, status: number, page: ApprovalView): Promise<void> {
+    const demoEmployees = page.kind === "approval" && page.action && !page.accountName
+        ? Array.from(employees, ([id, name]) => ({ id, name })) : undefined;
+    if (await writePhonePage(request, response, status, { ...page, employees: demoEmployees })) return;
+    response.setHeader("Vary", "Accept");
+    send(response, status, "text/html", approvalPage({ ...page, purpose: page.kind === "logout" ? "logout" : undefined }));
 }
 
 async function readForm(request: IncomingMessage): Promise<URLSearchParams> {
@@ -202,31 +211,29 @@ export function createShiftServer({ publicOrigin, now = Date.now, storageFile }:
         });
     }
 
-    function approvalState(response: ServerResponse, status: Exclude<LoginStatus, "pending">, replay: boolean): void {
-        const vehicleName = VEHICLE_NAME;
+    function approvalState(request: IncomingMessage, response: ServerResponse, status: Exclude<LoginStatus, "pending">,
+        replay: boolean): Promise<void> {
+        const page = { kind: "approval" as const, status, vehicleName: VEHICLE_NAME };
         switch (status) {
             case "approved":
-                html(response, replay ? 409 : 200, {
-                    title: "승인 완료", vehicleName,
+                return phonePage(request, response, replay ? 409 : 200, {
+                    ...page, title: "승인 완료",
                     notice: "차량의 SHIFT 화면에서 오늘 방문 업무를 확인하세요.",
                     profileUrl: "/mobile",
                 });
-                return;
             case "locked":
-                html(response, 429, {
-                    title: "PIN 입력 횟수 초과", vehicleName,
+                return phonePage(request, response, 429, {
+                    ...page, title: "PIN 입력 횟수 초과",
                     notice: "차량 화면에서 새 QR을 열고 다시 스캔하세요.",
                 });
-                return;
             case "expired":
-                html(response, 410, {
-                    title: "로그인 요청 만료", vehicleName,
+                return phonePage(request, response, 410, {
+                    ...page, title: "로그인 요청 만료",
                     notice: "차량 화면에서 새 QR을 열고 다시 스캔하세요.",
                 });
-                return;
             case "replaced":
-                html(response, 409, {
-                    title: "새 로그인 요청이 열렸습니다", vehicleName,
+                return phonePage(request, response, 409, {
+                    ...page, title: "새 로그인 요청이 열렸습니다",
                     notice: "차량 화면에 표시된 QR을 다시 스캔하세요.",
                 });
         }
@@ -236,18 +243,20 @@ export function createShiftServer({ publicOrigin, now = Date.now, storageFile }:
         const requestId = approvalIds.get(approvalToken);
         const login = requestId && requests.get(requestId);
         if (!login) {
-            html(response, 404, { title: "로그인 요청을 찾을 수 없습니다", notice: "차량 화면의 QR을 다시 스캔하세요." });
-            return;
+            return phonePage(request, response, 404, {
+                kind: "approval", status: "not-found", title: "로그인 요청을 찾을 수 없습니다",
+                notice: "차량 화면의 QR을 다시 스캔하세요.",
+            });
         }
         const initialStatus = statusOf(login);
         if (initialStatus !== "pending") {
-            approvalState(response, initialStatus, request.method === "POST");
-            return;
+            return approvalState(request, response, initialStatus, request.method === "POST");
         }
         const mobile = workspace.mobileIdentity(request);
         const microsoftAccount = mobile?.id.startsWith("ms:") ? mobile : undefined;
         const action = `/approve/${approvalToken}`;
-        const formPage = {
+        const formPage: ApprovalView = {
+            kind: "approval", status: "pending",
             title: "차량 로그인 승인",
             vehicleName: VEHICLE_NAME,
             notice: "차량을 확인하고 화면에 표시된 PIN을 입력하세요.",
@@ -255,16 +264,14 @@ export function createShiftServer({ publicOrigin, now = Date.now, storageFile }:
             connectUrl: workspace.microsoftConfigured ? `/mobile/microsoft/connect?returnTo=${encodeURIComponent(action)}` : undefined,
         };
         if (request.method === "GET") {
-            html(response, 200, formPage);
-            return;
+            return phonePage(request, response, 200, formPage);
         }
 
         const form = await readForm(request);
         // A concurrent approval or vehicle retry can change the request while its body is read.
         const status = statusOf(login);
         if (status !== "pending") {
-            approvalState(response, status, true);
-            return;
+            return approvalState(request, response, status, true);
         }
         const employee = microsoftAccount?.id ?? form.get("employee") ?? "";
         const employeeName = microsoftAccount?.name ?? employees.get(employee);
@@ -274,14 +281,12 @@ export function createShiftServer({ publicOrigin, now = Date.now, storageFile }:
             login.attempts++;
             if (login.attempts === MAX_ATTEMPTS) {
                 login.status = "locked";
-                approvalState(response, "locked", false);
-            } else {
-                html(response, 400, {
-                    ...formPage, selectedEmployee: employee,
-                    error: "차량 화면의 PIN과 계정을 확인하세요.",
-                });
+                return approvalState(request, response, "locked", false);
             }
-            return;
+            return phonePage(request, response, 400, {
+                ...formPage, selectedEmployee: employees.has(employee) ? employee : undefined,
+                error: "차량 화면의 PIN과 계정을 확인하세요.",
+            });
         }
 
         const previous = activeSession && requests.get(activeSession.requestId);
@@ -291,45 +296,44 @@ export function createShiftServer({ publicOrigin, now = Date.now, storageFile }:
         login.sessionToken = activeSession.token;
         login.employeeName = employeeName;
         workspace.authorizeMobile(response, employee);
-        response.setHeader("Location", formPage.action);
+        response.setHeader("Location", action);
         send(response, 303, "text/plain", "");
     }
 
-    function handleLogout(request: IncomingMessage, response: ServerResponse, approvalToken: string): void {
+    async function handleLogout(request: IncomingMessage, response: ServerResponse, approvalToken: string): Promise<void> {
         const id = logoutApprovalIds.get(approvalToken);
         const logout = id && logoutRequests.get(id);
+        const page = { kind: "logout" as const, vehicleName: VEHICLE_NAME };
         if (!logout) {
-            html(response, 404, { title: "종료 요청을 찾을 수 없습니다", notice: "차량 화면에서 새 QR을 스캔하세요." });
-            return;
+            return phonePage(request, response, 404, {
+                ...page, status: "not-found", title: "종료 요청을 찾을 수 없습니다",
+                notice: "차량 화면에서 새 QR을 스캔하세요.",
+            });
         }
         const status = logoutStatus(logout);
         if (status === "expired" || status === "replaced") {
-            html(response, status === "expired" ? 410 : 409, {
-                title: status === "expired" ? "종료 요청 만료" : "종료 요청이 취소되었습니다", vehicleName: VEHICLE_NAME,
+            return phonePage(request, response, status === "expired" ? 410 : 409, {
+                ...page, status, title: status === "expired" ? "종료 요청 만료" : "종료 요청이 취소되었습니다",
                 notice: "차량 화면에서 새 QR을 스캔하세요.",
             });
-            return;
         }
         if (workspace.mobileEmployee(request) !== logout.employeeId) {
-            html(response, 403, {
-                title: "차량 로그인에 사용한 휴대폰이 필요합니다", vehicleName: VEHICLE_NAME,
+            return phonePage(request, response, 403, {
+                ...page, status: "login-required", title: "차량 로그인에 사용한 휴대폰이 필요합니다",
                 notice: "같은 브라우저에서 QR을 다시 스캔하세요.",
             });
-            return;
         }
         if (status === "approved") {
-            html(response, request.method === "POST" ? 409 : 200, {
-                title: "로그아웃 완료", vehicleName: VEHICLE_NAME, notice: "차량에서 개인 업무가 닫혔습니다.",
+            return phonePage(request, response, request.method === "POST" ? 409 : 200, {
+                ...page, status, title: "로그아웃 완료", notice: "차량에서 개인 업무가 닫혔습니다.",
             });
-            return;
         }
         const action = `/logout/${approvalToken}`;
         if (request.method === "GET") {
-            html(response, 200, {
-                title: "차량 로그아웃 승인", vehicleName: VEHICLE_NAME,
-                notice: `${logout.employeeName}의 차량 업무를 종료합니다.`, action, purpose: "logout",
+            return phonePage(request, response, 200, {
+                ...page, status, title: "차량 로그아웃 승인", accountName: logout.employeeName,
+                notice: `${logout.employeeName}의 차량 업무를 종료합니다.`, action,
             });
-            return;
         }
         logout.status = "approved";
         activeSession = undefined;
@@ -343,6 +347,7 @@ export function createShiftServer({ publicOrigin, now = Date.now, storageFile }:
         if (method === "POST" && request.headers["sec-fetch-site"] === "cross-site") {
             throw new HttpError(403);
         }
+        if (await servePhoneAsset(request, response)) return;
         if (await workspace.handle(request, response, path, () => activeFor(request)?.employeeId)) return;
         if (method === "GET" && path === "/health") {
             json(response, 200, { ok: true });
@@ -399,7 +404,7 @@ export function createShiftServer({ publicOrigin, now = Date.now, storageFile }:
         }
         const logoutToken = path.startsWith("/logout/") ? path.slice("/logout/".length) : "";
         if ((method === "GET" || method === "POST") && OPAQUE_TOKEN.test(logoutToken)) {
-            handleLogout(request, response, logoutToken);
+            await handleLogout(request, response, logoutToken);
             return;
         }
         json(response, 404, { error: "not_found" });

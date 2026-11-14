@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { type IncomingMessage, type ServerResponse } from "node:http";
-import { createMicrosoftWork, escapeHtml, ProviderError, type MobileIdentity, type WorkData, type WorkPermissions } from "./microsoft-work.ts";
+import { createMicrosoftWork, escapeHtml, ProviderError, safeLink, type MobileIdentity, type WorkData, type WorkPermissions } from "./microsoft-work.ts";
+import { writePhonePage } from "./mobile-web.ts";
 import { createBriefing, createWorkspaceStore, demoData, demoNoteText, profileDefaults, withLocationEvidence, type SavedNote } from "./workspace-data.ts";
 import { permissionsPage, profilePage, renderPage } from "./workspace-page.ts";
 
@@ -219,6 +220,24 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
     async function mobile(request: IncomingMessage, response: ServerResponse, target: URL) {
         const path = target.pathname;
         const ticket = ticketFor(request);
+        if (path === `${MOBILE}/notes` && request.method === "GET") {
+            const title = "내 방문 메모";
+            const message = "차량의 SHIFT QR에서 로그인한 후 열 수 있습니다.";
+            const notes = ticket ? store.read(ticket.identity.id).notes.map(note => ({ ...noteOutput(note),
+                text: note.text, sourceUrl: safeLink(note.sourceUrl) })) : [];
+            const page = { kind: "notes" as const, title, notes, profileUrl: MOBILE, ...(!ticket ? { message } : {}) };
+            if (await writePhonePage(request, response, ticket ? 200 : 401, page)) return;
+            response.setHeader("Vary", "Accept");
+            if (!ticket || ticketFor(request) !== ticket) {
+                html(response, 401, renderPage(title, `<p>${message}</p>`));
+                return;
+            }
+            const items = notes.map(note => `<li><strong>${escapeHtml(note.title)}</strong>
+                ${note.sourceUrl ? `<p><a href="${escapeHtml(note.sourceUrl)}" rel="noreferrer">OneNote에서 열기</a></p>` : ""}
+                ${note.text ? `<pre>${escapeHtml(note.text)}</pre>` : ""}</li>`).join("");
+            html(response, 200, renderPage(title, `${items ? `<ul>${items}</ul>` : "<p>저장한 방문 메모가 없습니다.</p>"}<a href="/mobile">업무·개인 설정</a>`));
+            return;
+        }
         if (path === `${MOBILE}/microsoft/connect`) {
             if (request.method === "GET") {
                 const previous = cookie(request, "shift_oauth_browser");
@@ -295,13 +314,6 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
             return;
         }
         if (request.method !== "GET") throw new InputError(405);
-        if (path === `${MOBILE}/notes`) {
-            const items = store.read(employee).notes.map(note => `<li><strong>${escapeHtml(note.title)}</strong>
-                ${note.sourceUrl ? `<p><a href="${escapeHtml(note.sourceUrl)}" rel="noreferrer">OneNote에서 열기</a></p>` : ""}
-                ${note.text ? `<pre>${escapeHtml(note.text)}</pre>` : ""}</li>`).join("");
-            html(response, 200, renderPage("내 방문 메모", `${items ? `<ul>${items}</ul>` : "<p>저장한 방문 메모가 없습니다.</p>"}<a href="/mobile">업무·개인 설정</a>`));
-            return;
-        }
         if (path !== MOBILE) throw new InputError(404);
         const data = await rawData(employee);
         if (ticketFor(request) !== ticket) throw new InputError(403);

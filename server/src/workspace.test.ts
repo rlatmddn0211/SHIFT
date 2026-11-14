@@ -17,8 +17,8 @@ async function setup(options: { storageFile?: string; fetcher?: typeof fetch; en
     let app: ReturnType<typeof createWorkspace>;
     const server = createServer((request, response) => {
         const path = new URL(request.url ?? "/", "http://localhost").pathname;
-        if (path === "/test/approve") {
-            app.authorizeMobile(response, "employee-a");
+        if (path === "/test/approve" || path === "/test/approve-b") {
+            app.authorizeMobile(response, path.endsWith("-b") ? "employee-b" : "employee-a");
             response.end("test setup");
             return;
         }
@@ -116,6 +116,34 @@ test("mobile changes a profile with CSRF validation and saved notes are escaped,
     assert.equal(saved.read("employee-a").notes.length, 1);
     assert.equal(saved.read("employee-a").profile.seatHeight, 25);
     assert.equal(saved.read("employee-b").notes.length, 0);
+});
+
+test("live phone notes JSON reads only the authorized mobile identity's saved notes", async t => {
+    const { server, base } = await setup();
+    t.after(() => server.close());
+    const save = await fetch(`${base}${API}/notes`, {
+        method: "POST", headers: { ...AUTH_A, "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: "exclude-from-phone-model", visitId: "a-visit-1", text: "직원 A 메모" }),
+    });
+    assert.equal(save.status, 201);
+    const note = await save.json();
+    const cookieA = requestCookie(await fetch(`${base}/test/approve`));
+    const cookieB = requestCookie(await fetch(`${base}/test/approve-b`));
+    const read = (cookie: string) => fetch(`${base}/mobile/notes`, { headers: { cookie, Accept: "application/json" } });
+
+    const anonymous = await read("");
+    assert.equal(anonymous.status, 401);
+    assert.equal(anonymous.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await anonymous.json(), { kind: "notes", title: "내 방문 메모", profileUrl: "/mobile", notes: [],
+        message: "차량의 SHIFT QR에서 로그인한 후 열 수 있습니다." });
+    const employeeA = await read(cookieA);
+    assert.equal(employeeA.status, 200);
+    assert.deepEqual(await employeeA.json(), { kind: "notes", title: "내 방문 메모", profileUrl: "/mobile", notes: [
+        { id: note.id, title: "한빛모빌리티 미팅 · 방문 메모", text: "직원 A 메모", source: "demo" },
+    ] });
+    const employeeB = await read(cookieB);
+    assert.equal(employeeB.status, 200);
+    assert.deepEqual((await employeeB.json()).notes, []);
 });
 
 test("OAuth consent binds its callback to the originating browser and routes verified Microsoft identity", async t => {
