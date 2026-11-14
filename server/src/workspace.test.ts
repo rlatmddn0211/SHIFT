@@ -12,7 +12,7 @@ const API = "/api/vehicles/hyundai-demo-01/workspace";
 const AUTH_A = { Authorization: "Bearer employee-a" };
 const AUTH_B = { Authorization: "Bearer employee-b" };
 
-async function setup(options: { storageFile?: string; fetcher?: typeof fetch } = {}) {
+async function setup(options: { storageFile?: string; fetcher?: typeof fetch; enableNavTest?: boolean } = {}) {
     let app: ReturnType<typeof createWorkspace>;
     const server = createServer((request, response) => {
         const path = new URL(request.url ?? "/", "http://localhost").pathname;
@@ -31,7 +31,8 @@ async function setup(options: { storageFile?: string; fetcher?: typeof fetch } =
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Bad test listener");
     const base = `http://127.0.0.1:${address.port}`;
-    app = createWorkspace({ publicOrigin: base, storageFile: options.storageFile ?? "", fetcher: options.fetcher });
+    app = createWorkspace({ publicOrigin: base, storageFile: options.storageFile ?? "", fetcher: options.fetcher,
+        enableNavTest: options.enableNavTest ?? false });
     return { server, base };
 }
 
@@ -53,11 +54,27 @@ test("workspace hides other employees' visits and serves selected notes only wit
     const b = await (await fetch(`${base}${API}`, { headers: AUTH_B })).json();
     assert.equal(a.source, "demo");
     assert.equal(a.visits[0].id, "a-visit-1");
+    assert.equal(a.visits.length, 3);
     assert.equal(b.visits[0].id, "b-visit-1");
     assert.match(a.briefing.text, /판교역로 235/);
     assert.equal((await fetch(`${base}${API}/notes/b-note-1`, { headers: AUTH_A })).status, 404);
     const note = await (await fetch(`${base}${API}/notes/a-note-1`, { headers: AUTH_A })).json();
     assert.match(note.text, /납기/);
+});
+
+test("navigation QA adds the official destination to employee A's demo visits only", async t => {
+    const { server, base } = await setup({ enableNavTest: true });
+    t.after(() => server.close());
+    const a = await (await fetch(`${base}${API}`, { headers: AUTH_A })).json();
+    const b = await (await fetch(`${base}${API}`, { headers: AUTH_B })).json();
+    assert.equal(a.visits[0].id, "a-visit-1");
+    assert.equal(a.visits.length, 4);
+    const { id, time, title, address, latitude, longitude, poiId, poiName } = a.visits[3];
+    assert.deepEqual({ id, time, title, address, latitude, longitude, poiId, poiName }, {
+        id: "a-visit-nav-test", time: "16:40", title: "42dot · 내비 시험", address: "서울시 강남구 남부순환로 2621",
+        latitude: 37.48544722, longitude: 127.03636666, poiId: "36khp37hh8gqcm5nqhe5", poiName: "42dot",
+    });
+    assert.deepEqual(b.visits.map((visit: { id: string }) => visit.id), ["b-visit-1", "b-visit-2", "b-visit-3"]);
 });
 
 test("mobile changes a profile with CSRF validation and saved notes are escaped, idempotent, and durable", async t => {

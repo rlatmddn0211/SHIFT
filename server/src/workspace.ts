@@ -83,8 +83,9 @@ function noteOutput(note: SavedNote) {
     return { id: note.id, title: note.title, source: note.source, sourceUrl: note.sourceUrl };
 }
 
-export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch, storageFile }: {
-    publicOrigin: string; now?: () => number; fetcher?: typeof fetch; storageFile?: string;
+export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch, storageFile,
+    enableNavTest = process.env.SHIFT_ENABLE_NAV_TEST === "1" }: {
+    publicOrigin: string; now?: () => number; fetcher?: typeof fetch; storageFile?: string; enableNavTest?: boolean;
 }) {
     const origin = new URL(publicOrigin).origin;
     const secure = origin.startsWith("https:") ? "; Secure" : "";
@@ -123,7 +124,7 @@ export function createWorkspace({ publicOrigin, now = Date.now, fetcher = fetch,
     function sourceFor(employee: string) { return employee.startsWith("ms:") ? "microsoft365" as const : "demo" as const; }
 
     async function rawData(employee: string): Promise<WorkData> {
-        return sourceFor(employee) === "demo" ? demoData(employee) : microsoft.load(employee, store.read(employee).profile);
+        return sourceFor(employee) === "demo" ? demoData(employee, enableNavTest) : microsoft.load(employee, store.read(employee).profile);
     }
 
     async function workspaceData(employee: string) {

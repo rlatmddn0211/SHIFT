@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
-import { text, type Note, type WorkData, type WorkPermissions } from "./microsoft-work.ts";
+import { text, type Note, type Visit, type WorkData, type WorkPermissions } from "./microsoft-work.ts";
 
 export type Profile = WorkPermissions & {
     seatHeight: number;
@@ -39,8 +39,17 @@ const seed: Record<string, WorkData> = {
     },
 };
 
-export function demoData(employee: string): WorkData {
-    return seed[employee] ?? { visits: [], messages: [], notes: [] };
+const navigationTestVisit: Visit = {
+    id: "a-visit-nav-test", time: "16:40", title: "42dot · 내비 시험", address: "서울시 강남구 남부순환로 2621",
+    latitude: 37.48544722, longitude: 127.03636666, poiId: "36khp37hh8gqcm5nqhe5", poiName: "42dot",
+    evidence: "Pleos NaviHelper 공식 시험 목적지",
+    sourceUrl: "https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/routes",
+};
+
+export function demoData(employee: string, enableNavTest = false): WorkData {
+    const data = seed[employee] ?? { visits: [], messages: [], notes: [] };
+    if (employee === "employee-a" && enableNavTest) return { ...data, visits: [...data.visits, navigationTestVisit] };
+    return data;
 }
 
 export function demoNoteText(id: string): string {

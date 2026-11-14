@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 
 export type Visit = {
     id: string; time: string; title: string; address: string; latitude?: number; longitude?: number;
+    poiId?: string; poiName?: string;
     changedFrom?: string; previousTime?: string; evidence?: string; sourceUrl?: string;
 };
 export type Message = { id: string; subject: string; preview: string; receivedAt: string; sender: string; sourceUrl?: string };

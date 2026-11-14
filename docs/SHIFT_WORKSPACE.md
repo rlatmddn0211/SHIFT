@@ -8,6 +8,7 @@
 
 - 서버는 `npm --prefix server start`로 시작합니다. 기본 주소는 `127.0.0.1:8787`입니다.
 - 직원 A는 10:30 **한빛모빌리티 미팅**과 좌석 설정 46·57, 직원 B는 11:00 **한결로보틱스 방문**과 좌석 설정 64·42로 시작합니다. 각 직원의 선택, 메모와 좌석 설정은 분리됩니다. 좌석 숫자는 시연에 쓰는 0~100의 선호도입니다.
+- Pleos 내비 경로 요청을 시험할 때 서버 시작 전에 `SHIFT_ENABLE_NAV_TEST=1`을 설정합니다. 직원 A의 방문 목록 끝에 16:40 **42dot · 내비 시험**이 표시됩니다. [NaviHelper 공식 시험 목적지](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/routes)
 - 프로필과 시연 메모는 사용자 홈의 `.shift/workspace.json`에 보관합니다. `SHIFT_WORKSPACE_FILE`로 시연마다 별도 저장 파일을 지정할 수 있습니다. 업무 계정 접근 토큰과 로그인 승인 상태는 서버 메모리에 있습니다.
 - API는 차량 세션의 Bearer 토큰을 사용합니다. `GET /api/vehicles/hyundai-demo-01/workspace`는 당일 방문과 선택한 자료, 좌석 프로필, 브리핑을 제공합니다. `POST /api/vehicles/hyundai-demo-01/workspace/notes`에 `requestId`, `text`, 선택적 `visitId`를 보내 새 메모를 저장합니다. 재시도 시 같은 `requestId`를 사용합니다. `GET /api/vehicles/hyundai-demo-01/workspace/notes/{id}`는 선택한 노트를 조회합니다.
 
