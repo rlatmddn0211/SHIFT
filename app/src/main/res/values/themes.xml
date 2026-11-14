@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Shift" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#AACAE6</item>
+        <item name="android:windowBackground">#0B1728</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">SHIFT</string>
+    <string name="destination_preview_title">목적지 확인</string>
+    <string name="destination_preview_message">%1$s\n\n시안용 예시 일정이라 실제 내비게이션으로 전송하지 않습니다.</string>
+</resources>
