@@ -4,24 +4,23 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
-import android.graphics.drawable.StateListDrawable
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
-import android.widget.TextView
-import kotlin.math.ceil
-import kotlin.math.roundToInt
+import com.shift.vehicle.ShiftVehicleDesign.Companion.BACKGROUND
+import com.shift.vehicle.ShiftVehicleDesign.Companion.ERROR_PANEL
+import com.shift.vehicle.ShiftVehicleDesign.Companion.ERROR_TEXT
+import com.shift.vehicle.ShiftVehicleDesign.Companion.MUTED
+import com.shift.vehicle.ShiftVehicleDesign.Companion.NOTICE
+import com.shift.vehicle.ShiftVehicleDesign.Companion.NOTICE_TEXT
+import com.shift.vehicle.ShiftVehicleDesign.Companion.QR_PANEL
+import com.shift.vehicle.ShiftVehicleDesign.Companion.SKY
 
 internal class VehicleLoginView(
     context: Context,
@@ -41,23 +40,21 @@ internal class VehicleLoginView(
         data class Error(val message: String, val retryable: Boolean) : LoginState
     }
 
-    private val astaBold = font("asta_sans.ttf", 700)
-    private val notoRegular = font("noto_sans_kr.ttf", 400)
-    private val notoMedium = font("noto_sans_kr.ttf", 500)
-    private val notoBold = font("noto_sans_kr.ttf", 700)
     private var purpose = Purpose.LOGIN
     private var canCancel = false
     private var state: LoginState = LoginState.Loading("로그인 요청을 준비하고 있습니다.")
     private var lastWidth = 0
+    private var lastHeight = 0
     private var wide = false
-    private var scale = 1f
+    private var sideBySide = false
+    private var design = ShiftVehicleDesign(context, 1f)
 
     init {
         isFillViewport = true
         isVerticalScrollBarEnabled = false
         overScrollMode = View.OVER_SCROLL_NEVER
         layoutDirection = View.LAYOUT_DIRECTION_LTR
-        setBackgroundColor(NAVY)
+        setBackgroundColor(BACKGROUND)
     }
 
     fun showLoading(
@@ -74,12 +71,15 @@ internal class VehicleLoginView(
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
-        if (width > 0 && width != lastWidth) {
+        val height = MeasureSpec.getSize(heightMeasureSpec)
+        if (width > 0 && (width != lastWidth || height != lastHeight)) {
             lastWidth = width
+            lastHeight = height
             val widthDp = width / resources.displayMetrics.density
             wide = widthDp >= 1200f
-            scale = (widthDp / if (wide) 1700f else 840f).coerceAtMost(1f)
-            background = rounded(NAVY, 40)
+            design = ShiftVehicleDesign(context, (widthDp / if (wide) 1700f else 840f).coerceAtMost(1f))
+            sideBySide = wide || (widthDp >= 720f && height > 0 && height < design.px(1_040))
+            background = design.rounded(BACKGROUND, 40)
             clipToOutline = true
             rebuild()
         }
@@ -94,170 +94,110 @@ internal class VehicleLoginView(
         if (lastWidth > 0) rebuild()
     }
 
-    private fun rebuild() {
-        val body = column()
-        val inset = px(if (wide) 64 else 48)
-        body.setPadding(inset, inset, inset, inset)
-        body.append(label("SHIFT", 34, astaBold, SKY_BLUE))
-        body.append(label(purpose.title, 60, notoBold).apply { isAccessibilityHeading = true }, top = 14)
-        purpose.instructions?.let { body.append(label(it, 30, notoRegular, MUTED), top = 18) }
+    private fun rebuild() = with(design) {
+        val body = vertical().apply {
+            val inset = px(if (wide) 64 else 48)
+            setPadding(inset, inset, inset, inset)
+            append(wordmark(), width = WRAP_CONTENT)
+            append(heading(purpose.title, 60), 24)
+            purpose.instructions?.let { append(label(it, 30, color = MUTED), 18) }
 
-        when (val current = state) {
-            is LoginState.Loading -> body.append(messageCard(current.message, loading = true), top = 44)
-            is LoginState.Waiting -> {
-                body.append(requestCard(current), top = 44)
-                body.append(statusLine(), top = 28)
+            when (val current = state) {
+                is LoginState.Loading -> append(messageCard(current.message, loading = true), 34)
+                is LoginState.Waiting -> append(requestCard(current), 34)
+                is LoginState.Error -> append(messageCard(current.message, retryable = current.retryable), 34)
             }
-            is LoginState.Error -> body.append(messageCard(current.message, retryable = current.retryable), top = 44)
-        }
-        if (canCancel) {
-            body.addView(actionButton("취소", ::cancel), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                topMargin = px(24)
-            })
+            if (canCancel) append(button("취소", primary = false) { onCancel() }, 24, WRAP_CONTENT)
         }
 
         removeAllViews()
         addView(body, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
     }
 
-    private fun requestCard(waiting: LoginState.Waiting): LinearLayout {
-        val vehicleAndPin = column().apply {
-            append(vehicleName())
-            val pin = waiting.pin
-            if (pin != null) {
-                append(label("일회용 PIN", 28, notoMedium, SKY_BLUE), top = if (wide) 36 else 22)
-                append(label(pin, 68, astaBold).apply {
-                    letterSpacing = 0.15f
-                    contentDescription = pin.toList().joinToString(" ")
-                }, top = 8)
-            }
-        }
-        val size = px(if (wide) 352 else 292)
+    private fun requestCard(waiting: LoginState.Waiting) = with(design) {
+        val qrSize = px(when {
+            wide -> 352
+            sideBySide -> 248
+            else -> 272
+        })
         val qr = ImageView(context).apply {
             setImageBitmap(waiting.qr)
             scaleType = ImageView.ScaleType.FIT_CENTER
             background = rounded(Color.WHITE, 20)
-            val inset = px(14)
+            val inset = px(16)
             setPadding(inset, inset, inset, inset)
             contentDescription = if (purpose == Purpose.LOGOUT) "로그아웃 QR 코드" else "로그인 QR 코드"
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
 
-        return card().apply {
-            if (wide) {
+        card(if (wide) 42 else 32, QR_PANEL).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            if (sideBySide) {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(qr, LinearLayout.LayoutParams(size, size).apply {
-                    marginEnd = px(48)
+                addView(qr, LinearLayout.LayoutParams(qrSize, qrSize).apply {
+                    marginEnd = px(if (wide) 48 else 32)
                 })
-                addView(vehicleAndPin, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                addView(vertical().apply {
+                    append(vehicleName())
+                    waiting.pin?.let { append(pinBlock(it, centered = false), 24) }
+                    append(statusLine(centered = false), 24)
+                }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             } else {
-                addView(qr, LinearLayout.LayoutParams(size, size).apply { gravity = Gravity.CENTER_HORIZONTAL })
-                append(vehicleAndPin, top = 28)
+                append(vehicleName(centered = true))
+                addView(qr, LinearLayout.LayoutParams(qrSize, qrSize).apply {
+                    topMargin = px(22)
+                    gravity = Gravity.CENTER_HORIZONTAL
+                })
+                waiting.pin?.let { append(pinBlock(it, centered = true), 18) }
+                append(statusLine(centered = true), 18)
             }
         }
     }
 
-    private fun statusLine() = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        addView(View(context).apply {
-            background = rounded(SKY_BLUE, 6)
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, LinearLayout.LayoutParams(px(12), px(12)).apply { marginEnd = px(14) })
-        addView(label("휴대폰 승인 대기 중", 28, notoMedium, SKY_BLUE).apply {
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+    private fun pinBlock(pin: String, centered: Boolean) = with(design) {
+        vertical().apply {
+            val alignment = if (centered) Gravity.CENTER else Gravity.CENTER_VERTICAL
+            append(label("차량 화면의 6자리 PIN", 24, color = MUTED).apply { gravity = alignment })
+            append(label(pin, if (wide) 68 else 54, Font.Numeric).apply {
+                gravity = alignment
+                letterSpacing = 0.2f
+                fontFeatureSettings = "\"tnum\" 1"
+                contentDescription = pin.toList().joinToString(" ")
+            }, 6)
+        }
     }
 
-    private fun messageCard(message: String, loading: Boolean = false, retryable: Boolean = false) = card().apply {
-        if (purpose != Purpose.WORKSPACE) append(vehicleName())
-        if (loading) {
-            addView(ProgressBar(context).apply {
-                indeterminateTintList = ColorStateList.valueOf(SKY_BLUE)
+    private fun statusLine(centered: Boolean) = with(design) {
+        horizontal().apply {
+            gravity = if (centered) Gravity.CENTER else Gravity.CENTER_VERTICAL
+            addView(View(context).apply {
+                background = rounded(SKY, 6)
                 importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            }, LinearLayout.LayoutParams(px(48), px(48)).apply { topMargin = px(30) })
-        }
-        append(label(message, 30, notoRegular).apply {
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        }, top = 24)
-        if (retryable) {
-            addView(actionButton("다시 시도", onRetry), LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
-                topMargin = px(30)
+            }, LinearLayout.LayoutParams(px(10), px(10)).apply { marginEnd = px(12) })
+            addView(label("휴대폰 승인 대기 중", 25, Font.Medium, SKY).apply {
+                accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
             })
         }
     }
 
-    private fun cancel() = onCancel()
-
-    private fun actionButton(label: String, action: () -> Unit) = Button(context).apply {
-        text = label
-        typeface = notoBold
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 30 * scale)
-        setTextColor(NAVY)
-        isAllCaps = false
-        letterSpacing = 0f
-        gravity = Gravity.CENTER
-        minHeight = maxOf(px(84), (48 * resources.displayMetrics.density).roundToInt())
-        setPadding(px(36), px(12), px(36), px(12))
-        stateListAnimator = null
-        backgroundTintList = null
-        val backgroundStates = StateListDrawable().apply {
-            addState(intArrayOf(android.R.attr.state_focused), rounded(SKY_BLUE, 20, WHITE, 5))
-            addState(intArrayOf(), rounded(SKY_BLUE, 20))
+    private fun messageCard(message: String, loading: Boolean = false, retryable: Boolean = false) = with(design) {
+        card(if (wide) 42 else 32, if (retryable) ERROR_PANEL else NOTICE).apply {
+            if (purpose != Purpose.WORKSPACE) append(vehicleName())
+            if (loading) {
+                addView(ProgressBar(context).apply {
+                    indeterminateTintList = ColorStateList.valueOf(SKY)
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                }, LinearLayout.LayoutParams(px(48), px(48)).apply { topMargin = px(24) })
+            }
+            append(label(message, 30, color = if (retryable) ERROR_TEXT else NOTICE_TEXT).apply {
+                accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            }, 20)
+            if (retryable) append(button("다시 시도", primary = true) { onRetry() }, 24, WRAP_CONTENT)
         }
-        background = RippleDrawable(ColorStateList.valueOf(0x260B1728), backgroundStates, rounded(Color.WHITE, 20))
-        setOnClickListener { action() }
     }
 
-    private fun vehicleName() = label("현대 공용차 01", 40, notoBold)
-
-    private fun card() = column().apply {
-        val inset = px(if (wide) 48 else 36)
-        setPadding(inset, inset, inset, inset)
-        background = rounded(HYUNDAI_BLUE, 28)
-    }
-
-    private fun column() = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-
-    private fun label(value: String, size: Int, font: Typeface, color: Int = WHITE) = TextView(context).apply {
-        text = value
-        typeface = font
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, size * scale)
-        setTextColor(color)
-        includeFontPadding = false
-        gravity = Gravity.CENTER_VERTICAL
-        val lineHeight = TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_SP, ceil(size * 1.35f) * scale, resources.displayMetrics,
-        ).roundToInt()
-        setLineHeight(lineHeight)
-        minHeight = lineHeight
-    }
-
-    private fun LinearLayout.append(child: View, top: Int = 0) {
-        addView(child, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply { topMargin = px(top) })
-    }
-
-    private fun rounded(color: Int, radius: Int, outline: Int = Color.TRANSPARENT, strokeWidth: Int = 0) =
-        GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = px(radius).toFloat()
-            if (strokeWidth > 0) setStroke(px(strokeWidth), outline)
-        }
-
-    private fun px(dp: Int) = (dp * scale * resources.displayMetrics.density).roundToInt()
-
-    private fun font(name: String, weight: Int) = Typeface.Builder(context.assets, "fonts/$name")
-        .setFontVariationSettings("'wght' $weight")
-        .setWeight(weight)
-        .build()
-        ?: Typeface.create(Typeface.DEFAULT, weight, false)
-
-    private companion object {
-        val NAVY = Color.rgb(11, 23, 40)
-        val HYUNDAI_BLUE = Color.rgb(0, 44, 95)
-        val SKY_BLUE = Color.rgb(170, 202, 230)
-        val WHITE = Color.rgb(247, 248, 250)
-        val MUTED = Color.rgb(175, 192, 213)
+    private fun vehicleName(centered: Boolean = false) = design.label("공용차 01", 29, Font.Medium).apply {
+        if (centered) gravity = Gravity.CENTER
     }
 }

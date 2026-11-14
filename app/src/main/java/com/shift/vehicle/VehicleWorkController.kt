@@ -11,14 +11,18 @@ import android.os.Looper
 import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.WindowManager
+import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.shift.vehicle.ShiftVehicleDesign.Companion.BACKGROUND
 import com.shift.vehicle.ShiftVehicleDesign.Companion.LINE
+import com.shift.vehicle.ShiftVehicleDesign.Companion.MEMO_EDITOR
+import com.shift.vehicle.ShiftVehicleDesign.Companion.MEMO_EDITOR_LINE
 import com.shift.vehicle.ShiftVehicleDesign.Companion.MUTED
 import com.shift.vehicle.ShiftVehicleDesign.Companion.SKY
 import com.shift.vehicle.ShiftVehicleDesign.Companion.TEXT
@@ -36,7 +40,7 @@ internal class VehicleWorkController(
     private val onSessionEnded: () -> Unit,
     private val onNavigationPending: (PleosDestination?) -> Unit,
 ) {
-    private data class Action(val title: String, val primary: Boolean = true, val run: () -> Unit)
+    private data class Action(val title: String, val primary: Boolean = true, val icon: Int? = null, val run: () -> Unit)
     private data class NoteDraft(val text: String, val visit: Visit?, val requestId: String = UUID.randomUUID().toString())
 
     private val main = Handler(Looper.getMainLooper())
@@ -72,10 +76,18 @@ internal class VehicleWorkController(
         notes.shutdownNow()
     }
 
+    fun confirmLogout(onConfirm: () -> Unit) {
+        if (!allowed()) return
+        clear()
+        showSheet("차량 세션을 종료할까요?", "휴대폰에서 승인하면 차량의 개인 업무가 닫힙니다.",
+            listOf(Action("QR 열기", icon = R.drawable.shift_log_out, run = onConfirm), Action("취소", false, run = ::dismiss)))
+    }
+
     private fun destination(visit: Visit) {
         val candidate = navigationTarget(visit)
         val actions = if (candidate == null) listOf(Action("완료", run = ::dismiss))
-        else listOf(Action("내비로 보내기") { sendDestination(candidate) }, Action("돌아가기", false, ::dismiss))
+        else listOf(Action("내비로 보내기", icon = R.drawable.shift_navigation) { sendDestination(candidate) },
+            Action("돌아가기", false, R.drawable.shift_arrow_left, ::dismiss))
         showSheet("방문 장소 확인", "방문 주소와 변경 근거를 확인하세요.", actions) { panel ->
             panel.append(heading(listOf(visit.title, visit.time).filter(String::isNotBlank).joinToString(" · "), 36))
             panel.append(label("방문 주소   " + visit.address.ifBlank { "미정" }, 29, Font.Medium), 14)
@@ -130,8 +142,9 @@ internal class VehicleWorkController(
             else -> "시연 업무 브리핑"
         }
         val actions = if (workspace.profile.speakBriefing && summary.text.isNotBlank()) {
-            listOf(Action("브리핑 듣기") { speak(workspace) }, Action("돌아가기", false, ::dismiss))
-        } else listOf(Action("돌아가기", false, ::dismiss))
+            listOf(Action("브리핑 듣기", icon = R.drawable.shift_volume_2) { speak(workspace) },
+                Action("돌아가기", false, run = ::dismiss))
+        } else listOf(Action("돌아가기", false, run = ::dismiss))
         showSheet("업무 브리핑", description, actions) { panel ->
             panel.append(heading(summary.text.ifBlank { "선택된 브리핑이 없습니다." }, 35))
             for (message in workspace.messages.take(3)) {
@@ -156,7 +169,7 @@ internal class VehicleWorkController(
     }
 
     private fun seat(profile: DriverProfile) {
-        showSheet("시트 프리셋", "정차 상태에서 내 휴대폰 설정을 적용합니다.", listOf(Action("돌아가기", false, ::dismiss))) { panel ->
+        showSheet("시트 프리셋", "정차 상태에서 내 휴대폰 설정을 적용합니다.", listOf(Action("돌아가기", false, run = ::dismiss))) { panel ->
             panel.append(heading(preset(profile), 37))
             panel.append(label("운전석 지원 범위 확인 중", 27, color = MUTED), 15)
         }
@@ -171,7 +184,7 @@ internal class VehicleWorkController(
 
     private fun confirmSeat(profile: DriverProfile, axes: PleosSeatState) {
         showSheet("시트 프리셋", "적용하면 지원되는 운전석 위치가 이동합니다.",
-            listOf(Action("프리셋 적용") { applySeat(profile, axes) }, Action("돌아가기", false, ::dismiss))) { panel ->
+            listOf(Action("프리셋 적용") { applySeat(profile, axes) }, Action("돌아가기", false, run = ::dismiss))) { panel ->
             panel.append(heading(preset(profile), 39))
             panel.append(label("현재 높이 " + (axes.height?.let { "${axisPercent(it)}%" } ?: "지원 확인 불가"), 28, color = MUTED), 15)
             panel.append(label("현재 앞뒤 위치 " + (axes.foreAft?.let { "${axisPercent(it)}%" } ?: "지원 확인 불가"), 28, color = MUTED), 8)
@@ -199,14 +212,14 @@ internal class VehicleWorkController(
     private fun note(workspace: Workspace) {
         val visit = workspace.visits.firstOrNull()
         val actions = buildList {
-            add(Action("말하기 시작") { record(workspace) })
+            add(Action("말하기 시작", icon = R.drawable.shift_mic) { record(workspace) })
             if (BuildConfig.DEBUG && activity.assets.list("")?.contains(STT_FIXTURE) == true) {
                 add(Action("시험 음성 인식", false) {
                     val sample = activity.assets.open(STT_FIXTURE).use { it.readBytes() }
                     record(workspace, sample)
                 })
             }
-            add(Action("돌아가기", false, ::dismiss))
+            add(Action("돌아가기", false, run = ::dismiss))
         }
         showSheet("음성 메모", "정차 중에 방문 업무 메모를 남길 수 있습니다.", actions) { panel ->
             panel.append(heading(visit?.title ?: "새 업무 메모", 35))
@@ -223,7 +236,7 @@ internal class VehicleWorkController(
     }
 
     private fun loadVisitMemos() {
-        val back = Action("오늘 방문 업무", false, ::dismiss)
+        val back = Action("오늘 방문 업무", false, run = ::dismiss)
         result("방문 메모", "방문 메모를 불러오는 중입니다.", back)
         val expected = revision
         notes.execute {
@@ -242,12 +255,12 @@ internal class VehicleWorkController(
     }
 
     private fun showVisitMemos(memos: List<WorkNote>) {
-        val actions = listOf(Action("오늘 방문 업무", false, ::dismiss))
-        showSheet("방문 메모", "내가 저장한 방문 메모를 확인합니다.", actions) { panel ->
+        val actions = listOf(Action("오늘 방문 업무", false, run = ::dismiss))
+        showSheet("방문 메모", "내가 저장한 방문 메모를 확인합니다.", actions, groupContent = false) { panel ->
             if (memos.isEmpty()) {
-                panel.append(label("저장한 방문 메모가 없습니다.", 29, Font.Medium, MUTED))
+                panel.append(notice("저장한 방문 메모가 없습니다."))
             }
-            val back = Action("돌아가기", false) { showVisitMemos(memos) }
+            val back = Action("돌아가기", false, R.drawable.shift_arrow_left) { showVisitMemos(memos) }
             for ((index, memo) in memos.withIndex()) {
                 panel.append(button(memo.title, primary = false) { openNote(memo, "방문 메모", back) }, if (index == 0) 0 else 12)
             }
@@ -262,7 +275,9 @@ internal class VehicleWorkController(
             main.post {
                 if (!valid(expected)) return@post
                 response.onSuccess { content ->
-                    result(note.title, content.ifBlank { "이 노트에 표시할 텍스트가 없습니다." }, back)
+                    showSheet(note.title, "", listOf(back), groupContent = false) { panel ->
+                        panel.append(noteBody(content.ifBlank { "이 노트에 표시할 텍스트가 없습니다." }))
+                    }
                 }.onFailure {
                     if (it is WorkspaceSessionEnded) onSessionEnded()
                     else result(note.title, "${type}를 불러오지 못했습니다.", back)
@@ -300,11 +315,11 @@ internal class VehicleWorkController(
             maxLines = 6
             gravity = Gravity.TOP or Gravity.START
             typeface = design.typeface(Font.Medium)
-            textSize = 25f
+            setTextSize(TypedValue.COMPLEX_UNIT_PX, design.sp(29))
             setTextColor(TEXT)
             hint = "메모 내용"
             setHintTextColor(MUTED)
-            background = design.rounded(BACKGROUND, 12, LINE, 2)
+            background = design.rounded(MEMO_EDITOR, 22, MEMO_EDITOR_LINE, 2)
             val padding = design.px(16)
             setPadding(padding, padding, padding, padding)
         }
@@ -314,7 +329,7 @@ internal class VehicleWorkController(
                 val text = editor.text.toString().trim()
                 if (text.isBlank()) editor.error = "메모를 입력하세요."
                 else save(workspace, if (text == draft.text) draft else NoteDraft(text, draft.visit))
-            }, Action("다시 녹음", false) { record(workspace) }, Action("취소", false, ::dismiss))) { panel ->
+            }, Action("다시 녹음", false) { record(workspace) }, Action("취소", false, run = ::dismiss))) { panel ->
             panel.isFocusableInTouchMode = true
             panel.append(editor)
             panel.append(label(if (workspace.source == "microsoft365") "저장 위치 · 연결한 OneNote"
@@ -346,7 +361,7 @@ internal class VehicleWorkController(
 
     private fun music() {
         showSheet("휴대폰 음악", "정차 중 차량과 휴대폰의 오디오 연결을 확인합니다.",
-            listOf(Action("Bluetooth 설정") { openBluetooth() }, Action("오늘 방문 업무", false, ::dismiss))) { panel ->
+            listOf(Action("Bluetooth 설정") { openBluetooth() }, Action("오늘 방문 업무", false, run = ::dismiss))) { panel ->
             panel.append(heading("휴대폰에서 음악을 재생하세요", 38))
             panel.append(label("Pleos에서 휴대폰을 페어링하고 차량의 미디어 소스로 선택하세요.", 28, color = MUTED), 16)
         }
@@ -380,20 +395,30 @@ internal class VehicleWorkController(
         return ShiftVehicleDesign(activity, (width / 860f).coerceIn(0.67f, 1f))
     }
 
-    private fun showSheet(title: String, subtitle: String, actions: List<Action>, content: ShiftVehicleDesign.(LinearLayout) -> Unit) {
+    private fun showSheet(
+        title: String,
+        subtitle: String,
+        actions: List<Action>,
+        groupContent: Boolean = true,
+        content: (ShiftVehicleDesign.(LinearLayout) -> Unit)? = null,
+    ) {
         if (!allowed()) return
         revision++
         dismiss()
         val design = dialogDesign()
         val shell = with(design) {
             val column = card(38, BACKGROUND).apply {
-                background = rounded(BACKGROUND, 35, LINE, 2)
-                append(label("SHIFT", 27, Font.Logo, SKY))
+                background = rounded(BACKGROUND, 30, LINE, 2)
+                append(wordmark(width = 148), width = WRAP_CONTENT)
                 append(heading(title, 48), 16)
                 if (subtitle.isNotBlank()) append(label(subtitle, 27, color = MUTED), 13)
-                append(card(31).also { content(this@with, it) }, 24)
+                if (content != null) {
+                    val panel = if (groupContent) card(31) else vertical()
+                    content(this@with, panel)
+                    append(panel, 24)
+                }
                 for (action in actions) {
-                    append(button(action.title, action.primary) {
+                    append(button(action.title, action.primary, action.icon) {
                         if (allowed()) action.run()
                     }, 14)
                 }

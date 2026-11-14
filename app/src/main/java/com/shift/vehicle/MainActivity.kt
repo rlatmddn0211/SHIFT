@@ -1,7 +1,6 @@
 package com.shift.vehicle
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Bundle
@@ -26,7 +25,6 @@ class MainActivity : Activity() {
     private var workspace: Workspace? = null
     private var workController: VehicleWorkController? = null
     private var pendingNavigation: PleosDestination? = null
-    private var confirmation: AlertDialog? = null
     private var cancelPending = false
     private var visible = false
     @Volatile private var generation = 0
@@ -205,21 +203,11 @@ class MainActivity : Activity() {
         val current = workspace ?: return
         if (!visible || !platform.parked) return
         when (action) {
-            VehicleWorkAction.Logout -> confirmLogout()
+            VehicleWorkAction.Logout -> workController?.confirmLogout(::beginLogout)
             VehicleWorkAction.ChangeDriver -> beginLogin(handover = true)
             VehicleWorkAction.Refresh -> session?.let { openWorkspace(it) }
             else -> workController?.show(action, current)
         }
-    }
-
-    private fun confirmLogout() {
-        confirmation = AlertDialog.Builder(this)
-            .setTitle("차량 세션을 종료할까요?")
-            .setMessage("휴대폰에서 승인하면 차량의 개인 업무가 닫힙니다.")
-            .setNegativeButton(android.R.string.cancel, null)
-            .setPositiveButton("QR 열기") { _, _ -> beginLogout() }
-            .setOnDismissListener { confirmation = null }
-            .show()
     }
 
     private fun beginLogout() {
@@ -313,7 +301,6 @@ class MainActivity : Activity() {
         if (!visible) return
         if (!parked) {
             pendingNavigation = null
-            confirmation?.dismiss()
             workController?.clear()
             if (mode == VehicleLoginView.Purpose.LOGIN && session == null) {
                 val request = challenge
@@ -396,8 +383,6 @@ class MainActivity : Activity() {
     private fun canCancelFlow() = mode == VehicleLoginView.Purpose.LOGOUT || mode == VehicleLoginView.Purpose.HANDOVER
 
     private fun clearWorkspace() {
-        confirmation?.dismiss()
-        confirmation = null
         workController?.close()
         workController = null
         workspace = null
