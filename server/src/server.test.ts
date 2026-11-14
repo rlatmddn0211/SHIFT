@@ -12,7 +12,7 @@ type Logout = Omit<Challenge, "pin">;
 
 async function fixture(t: TestContext) {
     let time = 1_700_000_000_000;
-    const server = createShiftServer({ publicOrigin: PUBLIC_ORIGIN, now: () => time });
+    const server = createShiftServer({ publicOrigin: PUBLIC_ORIGIN, now: () => time, storageFile: "" });
     const listening = once(server, "listening");
     server.listen(0, "127.0.0.1");
     await listening;
@@ -89,7 +89,14 @@ test("vehicle and QR tokens are separate and only vehicle polling returns the se
     const success = await api.get(api.approvalPath(login));
     const successPage = await success.text();
     assert.match(successPage, /승인 완료/);
+    assert.match(successPage, /업무·개인 설정 열기/);
     assert.ok(!successPage.includes(state.sessionToken));
+    const cookie = result.headers.getSetCookie()[0]?.split(";", 1)[0];
+    assert.ok(cookie);
+    assert.match(await (await api.get("/mobile", { headers: { cookie } })).text(), /직원 A · 시연 계정/);
+    const work = await api.get(`${VEHICLE}/workspace`, { headers: { Authorization: `Bearer ${state.sessionToken}` } });
+    assert.equal(work.status, 200);
+    assert.equal((await work.json()).visits[0].title, "한빛모빌리티 미팅");
     assert.equal((await api.approve(login, "employee-b")).status, 409);
     assert.deepEqual(await api.status(login), state);
 });

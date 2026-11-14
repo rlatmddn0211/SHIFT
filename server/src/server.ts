@@ -2,6 +2,7 @@ import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { pathToFileURL } from "node:url";
 import { approvalPage, employees } from "./approval-page.ts";
+import { createWorkspace } from "./workspace.ts";
 
 const LOGIN_TTL_MS = 2 * 60_000;
 const SESSION_TTL_MS = 8 * 60 * 60_000;
@@ -11,7 +12,6 @@ const MAX_ATTEMPTS = 5;
 const VEHICLE_ID = "hyundai-demo-01";
 const VEHICLE_NAME = "현대 공용차 01";
 const OPAQUE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
-const MOBILE_COOKIE = "shift_demo_mobile";
 
 type LoginStatus = "pending" | "approved" | "expired" | "locked" | "replaced";
 type LoginRequest = {
@@ -107,16 +107,17 @@ async function readForm(request: IncomingMessage): Promise<URLSearchParams> {
     return new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
 }
 
-export function createShiftServer({ publicOrigin, now = Date.now }: {
+export function createShiftServer({ publicOrigin, now = Date.now, storageFile }: {
     publicOrigin: string;
     now?: () => number;
+    storageFile?: string;
 }) {
     const origin = originFrom(publicOrigin);
     const requests = new Map<string, LoginRequest>();
     const approvalIds = new Map<string, string>();
     const logoutRequests = new Map<string, LogoutRequest>();
     const logoutApprovalIds = new Map<string, string>();
-    const mobileSessions = new Map<string, { employeeId: string; expiresAt: number }>();
+    const workspace = createWorkspace({ publicOrigin: origin, now, storageFile });
     let activeSession: Session | undefined;
     let pendingId: string | undefined;
 
@@ -124,23 +125,6 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
         if (activeSession && activeSession.expiresAt > now() && sameToken(bearerFrom(request), activeSession.token)) {
             return activeSession;
         }
-    }
-
-    function mobileEmployee(request: IncomingMessage): string | undefined {
-        const entry = request.headers.cookie?.split(";").map((piece) => piece.trim())
-            .find((piece) => piece.startsWith(`${MOBILE_COOKIE}=`));
-        const mobile = entry && mobileSessions.get(entry.slice(MOBILE_COOKIE.length + 1));
-        if (mobile && mobile.expiresAt > now()) return mobile.employeeId;
-    }
-
-    function authorizeMobile(response: ServerResponse, employeeId: string): void {
-        for (const [id, mobile] of mobileSessions) {
-            if (mobile.expiresAt <= now() || mobileSessions.size >= MAX_REQUESTS) mobileSessions.delete(id);
-        }
-        const id = token();
-        mobileSessions.set(id, { employeeId, expiresAt: now() + SESSION_TTL_MS });
-        const secure = origin.startsWith("https:") ? "; Secure" : "";
-        response.setHeader("Set-Cookie", `${MOBILE_COOKIE}=${id}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure}`);
     }
 
     function statusOf(login: LoginRequest): LoginStatus {
@@ -225,6 +209,7 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
                 html(response, replay ? 409 : 200, {
                     title: "승인 완료", vehicleName,
                     notice: "차량의 SHIFT 화면에서 오늘 방문 업무를 확인하세요.",
+                    profileUrl: "/mobile",
                 });
                 return;
             case "locked":
@@ -259,11 +244,15 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
             approvalState(response, initialStatus, request.method === "POST");
             return;
         }
+        const mobile = workspace.mobileIdentity(request);
+        const microsoftAccount = mobile?.id.startsWith("ms:") ? mobile : undefined;
+        const action = `/approve/${approvalToken}`;
         const formPage = {
             title: "차량 로그인 승인",
             vehicleName: VEHICLE_NAME,
             notice: "차량을 확인하고 화면에 표시된 PIN을 입력하세요.",
-            action: `/approve/${approvalToken}`,
+            action, accountName: microsoftAccount?.name,
+            connectUrl: workspace.microsoftConfigured ? `/mobile/microsoft/connect?returnTo=${encodeURIComponent(action)}` : undefined,
         };
         if (request.method === "GET") {
             html(response, 200, formPage);
@@ -277,8 +266,8 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
             approvalState(response, status, true);
             return;
         }
-        const employee = form.get("employee") ?? "";
-        const employeeName = employees.get(employee);
+        const employee = microsoftAccount?.id ?? form.get("employee") ?? "";
+        const employeeName = microsoftAccount?.name ?? employees.get(employee);
         const submittedPin = form.get("pin") ?? "";
         if (!employeeName || !/^\d{6}$/.test(submittedPin) ||
             !timingSafeEqual(Buffer.from(login.pin), Buffer.from(submittedPin))) {
@@ -289,7 +278,7 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
             } else {
                 html(response, 400, {
                     ...formPage, selectedEmployee: employee,
-                    error: "차량 화면의 PIN과 시연 계정을 확인하세요.",
+                    error: "차량 화면의 PIN과 계정을 확인하세요.",
                 });
             }
             return;
@@ -301,7 +290,7 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
         login.status = "approved";
         login.sessionToken = activeSession.token;
         login.employeeName = employeeName;
-        authorizeMobile(response, employee);
+        workspace.authorizeMobile(response, employee);
         response.setHeader("Location", formPage.action);
         send(response, 303, "text/plain", "");
     }
@@ -321,7 +310,7 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
             });
             return;
         }
-        if (mobileEmployee(request) !== logout.employeeId) {
+        if (workspace.mobileEmployee(request) !== logout.employeeId) {
             html(response, 403, {
                 title: "차량 로그인에 사용한 휴대폰이 필요합니다", vehicleName: VEHICLE_NAME,
                 notice: "같은 브라우저에서 QR을 다시 스캔하세요.",
@@ -354,6 +343,7 @@ export function createShiftServer({ publicOrigin, now = Date.now }: {
         if (method === "POST" && request.headers["sec-fetch-site"] === "cross-site") {
             throw new HttpError(403);
         }
+        if (await workspace.handle(request, response, path, () => activeFor(request)?.employeeId)) return;
         if (method === "GET" && path === "/health") {
             json(response, 200, { ok: true });
             return;

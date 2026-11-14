@@ -10,6 +10,9 @@ type Page = {
     action?: string;
     purpose?: "logout";
     selectedEmployee?: string;
+    accountName?: string;
+    connectUrl?: string;
+    profileUrl?: string;
     error?: string;
 };
 
@@ -30,9 +33,9 @@ export function approvalPage(page: Page): string {
         const employeeOptions = Array.from(employees, ([id, name]) => `
             <option value="${escapeHtml(id)}"${id === page.selectedEmployee ? " selected" : ""}>${escapeHtml(name)}</option>
         `).join("");
-        form = `<form method="post" action="${escapeHtml(page.action)}">
-            <label for="employee">시연 계정</label>
-            <select id="employee" name="employee" required>${employeeOptions}</select>
+        const account = page.accountName ? `<p class="vehicle">${escapeHtml(page.accountName)} · Microsoft 365</p>` :
+            `<label for="employee">시연 계정</label><select id="employee" name="employee" required>${employeeOptions}</select>`;
+        form = `<form method="post" action="${escapeHtml(page.action)}">${account}
             <label for="pin">차량 화면의 PIN</label>
             <input id="pin" name="pin" type="text" inputmode="numeric" autocomplete="off"
                 pattern="[0-9]{6}" maxlength="6" placeholder="6자리 PIN" required
@@ -40,7 +43,8 @@ export function approvalPage(page: Page): string {
             ${page.error ? `<p class="error" id="pin-error" role="alert">${escapeHtml(page.error)}</p>` : ""}
             <button type="submit">로그인 승인</button>
         </form>
-        <p class="demo">시연 계정을 사용합니다. Microsoft 365 계정 연동은 준비 중입니다.</p>`;
+        ${page.accountName ? "" : '<p class="demo">시연 계정을 선택하면 예시 업무가 열립니다.</p>'}
+        ${page.connectUrl ? `<p><a href="${escapeHtml(page.connectUrl)}">${page.accountName ? "다른 Microsoft 365 계정 연결" : "Microsoft 365 계정 연결"}</a></p>` : ""}`;
     }
 
     return `<!doctype html>
@@ -70,6 +74,7 @@ export function approvalPage(page: Page): string {
     :focus-visible { outline: 3px solid #aacae6; outline-offset: 3px; }
     .error { color: #ffc5bd; margin-bottom: 0; }
     .demo { font-size: .875rem; }
+    a { color: #aacae6; }
 </style>
 </head>
 <body>
@@ -79,6 +84,7 @@ export function approvalPage(page: Page): string {
     ${page.vehicleName ? `<p class="vehicle">${escapeHtml(page.vehicleName)}</p>` : ""}
     ${page.notice ? `<p class="notice">${escapeHtml(page.notice)}</p>` : ""}
     ${form}
+    ${page.profileUrl ? `<p><a href="${escapeHtml(page.profileUrl)}">업무·개인 설정 열기</a></p>` : ""}
 </main>
 </body>
 </html>`;
