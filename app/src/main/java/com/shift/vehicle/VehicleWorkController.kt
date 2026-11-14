@@ -1,13 +1,14 @@
 package com.shift.vehicle
 
-import android.Manifest
 import android.app.Activity
 import android.app.Dialog
-import android.content.pm.PackageManager
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.text.InputFilter
 import android.text.InputType
 import android.view.Gravity
@@ -33,6 +34,7 @@ internal class VehicleWorkController(
     private val canWork: () -> Boolean,
     private val notifyChanged: () -> Unit,
     private val onSessionEnded: () -> Unit,
+    private val onNavigationPending: (PleosDestination?) -> Unit,
 ) {
     private data class Action(val title: String, val primary: Boolean = true, val run: () -> Unit)
     private data class NoteDraft(val text: String, val visit: Visit?, val requestId: String = UUID.randomUUID().toString())
@@ -40,7 +42,6 @@ internal class VehicleWorkController(
     private val main = Handler(Looper.getMainLooper())
     private val notes = Executors.newSingleThreadExecutor()
     private var dialog: Dialog? = null
-    private var permissionRequest: Workspace? = null
     private var revision = 0
     private var closed = false
 
@@ -59,7 +60,6 @@ internal class VehicleWorkController(
 
     fun clear() {
         revision++
-        permissionRequest = null
         platform.stopSpeech()
         platform.cancelSeat()
         dismiss()
@@ -69,14 +69,6 @@ internal class VehicleWorkController(
         closed = true
         clear()
         notes.shutdownNow()
-    }
-
-    fun onMicrophonePermission(granted: Boolean) {
-        val workspace = permissionRequest ?: return
-        permissionRequest = null
-        if (!allowed()) return
-        if (granted) record(workspace)
-        else result("마이크 권한 필요", "음성 메모를 녹음하려면 마이크 사용을 허용해 주세요.", Action("돌아가기") { note(workspace) })
     }
 
     private fun destination(visit: Visit) {
@@ -111,7 +103,20 @@ internal class VehicleWorkController(
             panel.append(label(candidate.address, 28, color = MUTED), 12)
         }
         val expected = revision
+        onNavigationPending(candidate)
         platform.navigate(candidate) { outcome ->
+            onNavigationPending(null)
+            if (valid(expected)) result("Pleos 내비게이션", outcome.message)
+        }
+    }
+
+    fun resumeNavigation(candidate: PleosDestination) {
+        if (!allowed()) return
+        showSheet("Pleos 내비게이션", "기본 내비에서 설정된 목적지를 확인합니다.", emptyList()) { panel ->
+            panel.append(heading(candidate.title, 34))
+        }
+        val expected = revision
+        platform.confirmNavigation(candidate) { outcome ->
             if (valid(expected)) result("Pleos 내비게이션", outcome.message)
         }
     }
@@ -192,29 +197,50 @@ internal class VehicleWorkController(
 
     private fun note(workspace: Workspace) {
         val visit = workspace.visits.firstOrNull()
-        showSheet("음성 메모", "정차 중에 방문 업무 메모를 남길 수 있습니다.",
-            listOf(Action("말하기 시작") { requestRecording(workspace) }, Action("돌아가기", false, ::dismiss))) { panel ->
+        val actions = buildList {
+            add(Action("말하기 시작") { record(workspace) })
+            if (BuildConfig.DEBUG && activity.assets.list("")?.contains(STT_FIXTURE) == true) {
+                add(Action("시험 음성 인식", false) {
+                    val sample = activity.assets.open(STT_FIXTURE).use { it.readBytes() }
+                    record(workspace, sample)
+                })
+            }
+            add(Action("돌아가기", false, ::dismiss))
+        }
+        showSheet("음성 메모", "정차 중에 방문 업무 메모를 남길 수 있습니다.", actions) { panel ->
             panel.append(heading(visit?.title ?: "새 업무 메모", 35))
             if (workspace.notes.isNotEmpty()) {
                 panel.divider(20)
                 panel.append(label("업무 노트", 24, Font.Medium, SKY), 16)
-                workspace.notes.take(3).forEach { panel.append(label(it.title, 26, color = MUTED), 10) }
+                workspace.notes.take(3).forEach { linked ->
+                    panel.append(button(linked.title, primary = false) { openNote(workspace, linked) }, 12)
+                }
             }
         }
     }
 
-    private fun requestRecording(workspace: Workspace) {
-        if (!allowed()) return
-        if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            record(workspace)
-        } else {
-            permissionRequest = workspace
-            activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), MIC_PERMISSION)
+    private fun openNote(workspace: Workspace, note: WorkNote) {
+        val back = Action("돌아가기", false) { note(workspace) }
+        result(note.title, "선택한 업무 노트를 불러오는 중입니다.", back)
+        val expected = revision
+        notes.execute {
+            val response = runCatching { workspaceApi.readNote(session.token, note.id) }
+            main.post {
+                if (!valid(expected)) return@post
+                response.onSuccess { content ->
+                    result(note.title, content.ifBlank { "이 노트에 표시할 텍스트가 없습니다." }, back)
+                }.onFailure {
+                    if (it is WorkspaceSessionEnded) onSessionEnded()
+                    else result(note.title, "업무 노트를 불러오지 못했습니다.", back)
+                }
+            }
         }
     }
 
-    private fun record(workspace: Workspace) {
-        showSheet("음성 메모 녹음", "메모를 말씀해 주세요. 말이 끝나면 확인 화면을 엽니다.",
+    private fun record(workspace: Workspace, sample: ByteArray? = null) {
+        val instruction = if (sample == null) "메모를 말씀해 주세요. 말이 끝나면 확인 화면을 엽니다."
+            else "한국어 시험 음성을 인식하고 있습니다."
+        showSheet("음성 메모 녹음", instruction,
             listOf(Action("녹음 취소") {
                 platform.stopSpeech()
                 note(workspace)
@@ -222,7 +248,7 @@ internal class VehicleWorkController(
             panel.append(heading(workspace.visits.firstOrNull()?.title ?: "새 업무 메모", 35))
         }
         val expected = revision
-        platform.listen { response ->
+        platform.listen(sample) { response ->
             if (!valid(expected)) return@listen
             response.onSuccess { review(workspace, NoteDraft(it, workspace.visits.firstOrNull())) }.onFailure { error ->
                 result("음성 인식 결과", error.message ?: "인식 결과를 받지 못했습니다.", Action("돌아가기") { note(workspace) })
@@ -254,7 +280,7 @@ internal class VehicleWorkController(
                 val text = editor.text.toString().trim()
                 if (text.isBlank()) editor.error = "메모를 입력하세요."
                 else save(workspace, if (text == draft.text) draft else NoteDraft(text, draft.visit))
-            }, Action("다시 녹음", false) { requestRecording(workspace) }, Action("취소", false, ::dismiss))) { panel ->
+            }, Action("다시 녹음", false) { record(workspace) }, Action("취소", false, ::dismiss))) { panel ->
             panel.isFocusableInTouchMode = true
             panel.append(editor)
             panel.append(label(if (workspace.source == "microsoft365") "저장 위치 · 연결한 OneNote"
@@ -286,9 +312,19 @@ internal class VehicleWorkController(
 
     private fun music() {
         showSheet("휴대폰 음악", "정차 중 차량과 휴대폰의 오디오 연결을 확인합니다.",
-            listOf(Action("오늘 방문 업무", run = ::dismiss))) { panel ->
+            listOf(Action("Bluetooth 설정") { openBluetooth() }, Action("오늘 방문 업무", false, ::dismiss))) { panel ->
             panel.append(heading("휴대폰에서 음악을 재생하세요", 38))
             panel.append(label("Pleos에서 휴대폰을 페어링하고 차량의 미디어 소스로 선택하세요.", 28, color = MUTED), 16)
+        }
+    }
+
+    private fun openBluetooth() {
+        try {
+            activity.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        } catch (_: ActivityNotFoundException) {
+            result("휴대폰 음악", "Pleos의 시스템 설정에서 Bluetooth를 열어 주세요.")
+        } catch (_: SecurityException) {
+            result("휴대폰 음악", "Pleos의 시스템 설정에서 Bluetooth를 열어 주세요.")
         }
     }
 
@@ -358,7 +394,7 @@ internal class VehicleWorkController(
         sheet.window?.setLayout(width, height)
     }
 
-    companion object {
-        const val MIC_PERMISSION = 41
+    private companion object {
+        const val STT_FIXTURE = "shift-stt-fixture.pcm"
     }
 }

@@ -5,6 +5,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 internal data class Visit(
     val id: String,
@@ -21,7 +22,7 @@ internal data class Visit(
 )
 
 internal data class WorkMessage(val subject: String, val preview: String, val receivedAt: String, val sender: String)
-internal data class WorkNote(val title: String)
+internal data class WorkNote(val id: String, val title: String)
 internal data class DriverProfile(val seatHeight: Int, val seatPosition: Int, val speakBriefing: Boolean)
 internal data class WorkBriefing(val text: String, val source: String)
 internal data class Workspace(
@@ -50,7 +51,7 @@ internal class WorkspaceApi(private val origin: String = BuildConfig.SHIFT_API_O
             messages = getJSONArray("messages").items().map {
                 WorkMessage(it.getString("subject"), it.optString("preview"), it.optString("receivedAt"), it.optString("sender"))
             },
-            notes = getJSONArray("notes").items().map { WorkNote(it.getString("title")) },
+            notes = getJSONArray("notes").items().map { WorkNote(it.getString("id"), it.getString("title")) },
             profile = DriverProfile(settings.getInt("seatHeight"), settings.getInt("seatPosition"), settings.getBoolean("speakBriefing")),
             briefing = WorkBriefing(brief.optString("text"), brief.getString("source")),
         )
@@ -60,6 +61,11 @@ internal class WorkspaceApi(private val origin: String = BuildConfig.SHIFT_API_O
         val body = JSONObject().put("text", text).put("requestId", requestId)
         if (visitId != null) body.put("visitId", visitId)
         return request("POST", "$PATH/notes", token, body).getString("source")
+    }
+
+    fun readNote(token: String, id: String): String {
+        val segment = URLEncoder.encode(id, "UTF-8").replace("+", "%20")
+        return request("GET", "$PATH/notes/$segment", token).getString("text")
     }
 
     private fun request(method: String, path: String, token: String, body: JSONObject? = null): JSONObject {

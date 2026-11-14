@@ -38,10 +38,10 @@ internal class PleosSpeech(
         }
     }
 
-    fun listen(callback: (Result<String>) -> Unit) {
+    fun listen(callback: (Result<String>) -> Unit, sample: ByteArray? = null) {
         stop()
         runCatching {
-            val request = Recognition(callback)
+            val request = Recognition(callback, sample)
             recognition = request
             request.start()
         }.onFailure {
@@ -121,7 +121,10 @@ internal class PleosSpeech(
         }
     }
 
-    private inner class Recognition(private val callback: (Result<String>) -> Unit) {
+    private inner class Recognition(
+        private val callback: (Result<String>) -> Unit,
+        private val sample: ByteArray?,
+    ) {
         private val stt = SpeechToText(context, SttMode.ON_DEVICE)
         private var requested = false
         private val timeout = Runnable { finish(null, "최종 인식 결과를 받지 못했어요. 다시 녹음해 주세요.") }
@@ -161,7 +164,11 @@ internal class PleosSpeech(
                             stt.addListener(listener)
                             stt.setLocale(Locale.KOREA)
                             requested = true
-                            stt.request()
+                            if (sample == null) stt.request()
+                            else {
+                                stt.sendAudio(sample)
+                                stt.completeAudioSend()
+                            }
                         }.onFailure { finish(null, "음성 인식을 시작하지 못했어요.") }
                     }
                 }

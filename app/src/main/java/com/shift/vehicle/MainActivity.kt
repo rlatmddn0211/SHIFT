@@ -25,6 +25,7 @@ class MainActivity : Activity() {
     private var session: VehicleLoginApi.Session? = null
     private var workspace: Workspace? = null
     private var workController: VehicleWorkController? = null
+    private var pendingNavigation: PleosDestination? = null
     private var confirmation: AlertDialog? = null
     private var cancelPending = false
     private var visible = false
@@ -75,6 +76,7 @@ class MainActivity : Activity() {
             if (handover) return
             invalidatePendingCallbacks()
             clearWorkspace()
+            pendingNavigation = null
             challenge = null
             logoutChallenge = null
             session = null
@@ -85,6 +87,7 @@ class MainActivity : Activity() {
         if (handover && (session == null || !platform.parked)) return
         invalidatePendingCallbacks()
         clearWorkspace()
+        pendingNavigation = null
         mode = if (handover) VehicleLoginView.Purpose.HANDOVER else VehicleLoginView.Purpose.LOGIN
         cancelPending = false
         challenge = null
@@ -130,6 +133,7 @@ class MainActivity : Activity() {
     private fun openWorkspace(approved: VehicleLoginApi.Session) {
         invalidatePendingCallbacks()
         clearWorkspace()
+        if (session !== approved) pendingNavigation = null
         mode = VehicleLoginView.Purpose.WORKSPACE
         cancelPending = false
         challenge = null
@@ -149,6 +153,7 @@ class MainActivity : Activity() {
                         canWork = { visible && platform.parked && session === approved && mode == VehicleLoginView.Purpose.WORKSPACE },
                         notifyChanged = { if (visible && session === approved) loadWorkspace(approved, refresh = true) },
                         onSessionEnded = { if (visible && session === approved) beginLogin() },
+                        onNavigationPending = { if (session === approved) pendingNavigation = it },
                     )
                 }
                 renderWorkspace()
@@ -170,6 +175,10 @@ class MainActivity : Activity() {
         val approved = session ?: return
         val availability = if (platform.parked) VehicleAvailability.PARKED else VehicleAvailability.RESTRICTED
         setContentView(VehicleWorkScreen(this, current, approved.employeeName, availability, ::handleWork))
+        if (platform.parked) pendingNavigation?.let { destination ->
+            pendingNavigation = null
+            workController?.resumeNavigation(destination)
+        }
     }
 
     private fun checkSession(approved: VehicleLoginApi.Session, reopen: Boolean = false) {
@@ -218,6 +227,7 @@ class MainActivity : Activity() {
         if (!visible || !platform.parked) return
         invalidatePendingCallbacks()
         clearWorkspace()
+        pendingNavigation = null
         mode = VehicleLoginView.Purpose.LOGOUT
         cancelPending = false
         logoutChallenge = null
@@ -302,6 +312,7 @@ class MainActivity : Activity() {
     private fun onParkedChanged(parked: Boolean) {
         if (!visible) return
         if (!parked) {
+            pendingNavigation = null
             confirmation?.dismiss()
             workController?.clear()
             if (mode == VehicleLoginView.Purpose.LOGIN && session == null) {
@@ -431,13 +442,6 @@ class MainActivity : Activity() {
             if (matrix[index % size, index / size]) Color.BLACK else Color.WHITE
         }
         return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.ARGB_8888)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == VehicleWorkController.MIC_PERMISSION) {
-            workController?.onMicrophonePermission(grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED)
-        }
     }
 
     private companion object {

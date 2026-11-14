@@ -132,8 +132,8 @@ internal class PleosPlatform(
         else callback(PleosActionResult(false, "주차가 확인된 뒤 브리핑을 들을 수 있어요."))
     }
 
-    fun listen(callback: (Result<String>) -> Unit) {
-        if (parked) speech.listen(callback)
+    fun listen(sample: ByteArray? = null, callback: (Result<String>) -> Unit) {
+        if (parked) speech.listen(callback, sample)
         else callback(Result.failure(IllegalStateException("주차가 확인된 뒤 녹음할 수 있어요.")))
     }
 
