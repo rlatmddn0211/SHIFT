@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="112" viewBox="16 30 640 112" role="img" aria-labelledby="title desc">
+  <title id="title">SHIFT</title>
+  <desc id="desc">Original forward-leaning SHIFT wordmark, Hyundai Blue #F7F8FA, with separated speed fragments on the right.</desc>
+  <g fill="#F7F8FA" transform="translate(44 35) skewX(-12)">
+    <path d="M18 0H90V24H30V39H68L88 58V82L70 100H0V76H58V61H22L2 43V18Z"/>
+    <path d="M108 0H134V37H170V0H196V100H170V63H134V100H108Z"/>
+    <path d="M218 0H244V100H218Z"/>
+    <path d="M266 0H352V24H292V42H338V66H292V100H266Z"/>
+    <path d="M374 0H474V24H437V100H411V24H374Z"/>
+    <path d="M486 0H535L525 10H484Z"/>
+    <path d="M484 16H574L562 26H482Z"/>
+    <path d="M482 32H544L533 42H480Z"/>
+    <path d="M585 16H605L593 26H583Z"/>
+  </g>
+</svg>

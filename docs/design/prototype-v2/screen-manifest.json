@@ -1,0 +1,62 @@
+{
+  "version": "2.0-design-draft",
+  "reference": {
+    "url": "https://github.com/rlatmddn0211/SHIFT/blob/codex/pleos-screen-dev/docs/images/shift-pleos-compact.png",
+    "gitBlobSha": "377d8a679f58816305fc6d25b7f51c0a4828209a",
+    "vehicleWindow": { "width": 840, "height": 1184 },
+    "mobileViewport": { "width": 390, "height": 844 },
+    "fonts": { "korean": "Noto Sans KR", "latin": "Asta Sans" }
+  },
+  "colors": {
+    "hyundaiBlue": "#002C5F",
+    "skyBlue": "#AACAE6",
+    "white": "#FFFFFF",
+    "lightSand": "#F6F3F2",
+    "vehicleBackground": "#0B1728",
+    "vehicleText": "#F7F8FA"
+  },
+  "primaryScreens": [
+    { "id": "V1", "device": "vehicle", "name": "시작·QR 인증" },
+    { "id": "V2", "device": "vehicle", "name": "탑승 준비" },
+    { "id": "V3", "device": "vehicle", "name": "업무 홈" },
+    { "id": "V4", "device": "vehicle", "name": "방문 업무 상세" },
+    { "id": "V5", "device": "vehicle", "name": "목적지 확인·전달" },
+    { "id": "V6", "device": "vehicle", "name": "내 노트 조회" },
+    { "id": "V7", "device": "vehicle", "name": "방문 후 음성 메모" },
+    { "id": "V8", "device": "vehicle", "name": "좌석 프로필" },
+    { "id": "V9", "device": "vehicle", "name": "개인 세션 종료" },
+    { "id": "P1", "device": "mobile", "name": "시작·Microsoft 로그인" },
+    { "id": "P2", "device": "mobile", "name": "내 SHIFT 홈" },
+    { "id": "P3", "device": "mobile", "name": "업무 연결·브리핑 설정" },
+    { "id": "P4", "device": "mobile", "name": "OneNote 선택" },
+    { "id": "P5", "device": "mobile", "name": "좌석 프로필 관리" },
+    { "id": "P6", "device": "mobile", "name": "차량 연결 승인" },
+    { "id": "P7", "device": "mobile", "name": "개인 세션 종료 승인" }
+  ],
+  "stateGroups": [
+    { "id": "S1", "baseScreen": "V1", "name": "인증 오류·QR 만료" },
+    { "id": "S2", "baseScreen": "V2", "name": "개인 환경 불러오는 중" },
+    { "id": "S3", "baseScreen": "V3", "name": "업무 서비스 미연결·조회 실패" },
+    { "id": "S4", "baseScreen": "V8", "name": "좌석 적용 중·미지원·실패" },
+    { "id": "S5", "baseScreen": "V5", "name": "목적지 전달 실패" },
+    { "id": "S6", "baseScreen": "V7", "name": "음성 메모 확인" },
+    { "id": "S7", "baseScreen": "V7", "name": "메모 저장 결과·재시도" },
+    { "id": "S8", "baseScreen": "V9", "name": "세션 잠금·종료·A/B 교대" }
+  ],
+  "flows": {
+    "firstSetup": ["P1", "P3", "P4", "P5", "P2"],
+    "vehicleUse": ["V1", "P6", "S2", "V2", "V3", "V4", "V5", "V7", "S6", "S7", "V9", "P7", "V1"],
+    "noteReading": ["V3", "V6", "V7", "S6", "S7"],
+    "seatManagement": ["V2", "V8", "V2"],
+    "remoteEnd": ["P2", "P7", "S8"]
+  },
+  "scope": {
+    "seat": "Driver-seat height and fore/aft position, with parked confirmation and per-vehicle capability checks.",
+    "music": "Phone official music app to vehicle audio; no SHIFT playlist integration or dedicated music player.",
+    "navigation": "Confirm the destination and hand it to Pleos navigation.",
+    "notes": "Read selected OneNote notes and confirm a newly dictated memo before saving.",
+    "future": ["booking", "rental", "vehicle return", "fleet administration"]
+  },
+  "delivery": { "type": "interactive-web-prototype", "directory": "prototype", "primaryScreenCount": 16, "stateGroupCount": 8 },
+  "figma": { "status": "deferred-by-user; web prototype selected", "fileKey": null, "sessionId": null }
+}

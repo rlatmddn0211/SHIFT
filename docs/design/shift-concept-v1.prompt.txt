@@ -1,0 +1,33 @@
+Use case: ui-mockup.
+Asset type: first high-fidelity visual concept board for SHIFT, a Korean Pleos Connect shared-company-car work app. Create a polished landscape product design board, approximately 3:2 ratio, high resolution. This is a STATIC DESIGN CONCEPT, not an actual screenshot or Hyundai-endorsed product.
+
+Primary request: Present TWO large, clearly readable interface mockups together: a wide, dark in-car visit-work dashboard and a tall, bright mobile-web vehicle-connection approval screen. Match them as one calm, professional product. Below the two screens add a restrained six-step text journey, rather than many tiny unreadable screens.
+
+Brand: SHIFT. Existing tagline, exactly: "공유차량을 나의 업무 공간으로". Use a simple confident typographic wordmark; no invented car-brand emblem. Korean UI text should be natural, clean and correctly spelled. Use generous spacing, precise alignment, simple thin line icons and contemporary Korean sans-serif typography.
+
+Board composition: warm light-gray/off-white presentation canvas, generous outer margins, understated SHIFT wordmark and tagline at the top. The dominant in-car screen occupies the left two-thirds, shown straight-on as a clean wide display with a thin charcoal frame. The phone/mobile screen is on the right, straight-on, a slim rounded rectangle with a small unobtrusive bezel. No perspective, no car interior, no hands, no people, no photographic scenery. Put small labels "차량 · 방문 업무" and "휴대폰 · 연결 승인" above their respective frames. They illustrate two moments in the same flow.
+
+Car UI:
+- Sophisticated dark charcoal/navy background (#101820), slightly lighter solid panels, warm-white primary text, muted secondary text, restrained pale teal accent. No glowing outlines, neon, glossy glass, decorative gradients or oversaturated dashboard.
+- Top bar: SHIFT left, a discreet "정차 중" status, right a small avatar "A" with "업무 연결됨".
+- Narrow left navigation with simple line icons and short labels "내 업무", "노트", "음악"; "내 업무" active.
+- Main heading: "다음 방문".
+- Largest card: a clear "14:00" time, "고객사 미팅", "서울 강남구", a small "관련 메일 있음" tag, and ONE prominent pale-teal action button "방문지 확인". The action opens confirmation; it must not imply automatic navigation without confirmation.
+- Two quieter supporting cards: "관련 메일" with "미팅 장소 변경" and "원본 확인"; "방문 준비 노트" with "OneNote" and "노트 보기". The information hierarchy should prioritize one next action, not a grid of equally loud widgets.
+- Bottom edge: a quiet but legible "개인 세션 종료" action. Avoid exposing personal email addresses. Do not show vehicle booking, rental, returns, fleet management, fuel or HVAC controls.
+- Large comfortable touch targets, short text, strong readable contrast. The layout should feel plausible as a parked in-car Android app, not a web admin dashboard.
+
+Mobile web UI:
+- White/light-gray background, dark text, same restrained teal accent.
+- SHIFT header, heading "차량 연결 확인".
+- A simple vehicle identity card labeled "공용차 01", secondary "회사에서 배정받은 차량".
+- Account row "직원 A". Service rows "Microsoft 365" and "OneNote" with clear connected status.
+- One large primary button "이 차량에 연결".
+- A small supportive caption "업무 연결은 언제든 종료할 수 있어요."
+- No reservation, administrator, fleet list or payment UI. No YouTube Music playlist browser or playback controls because that integration has not been verified.
+- Keep this mobile UI clean and focused on consent/approval.
+
+Bottom journey, exact six labels in a fine, airy horizontal row:
+"01 차량 탑승" → "02 SHIFT 인증" → "03 방문 업무" → "04 목적지 확인" → "05 방문 후 메모" → "06 세션 종료".
+Small footer note, exactly "디자인 초안 · 예시 데이터".
+The finished image must look like a carefully art-directed real product UI concept, clear enough for two teammates to discuss screen hierarchy. Do not add metrics, decorative charts, mock analytics, claims of implemented APIs, unsupported music integration, login passwords or real company/user data.
