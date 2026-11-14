@@ -8,6 +8,7 @@ val shiftApiOrigin = providers.gradleProperty("shiftApiOrigin").orElse("http://1
 android {
     namespace = "com.shift.vehicle"
     compileSdk = 34
+    useLibrary("android.car")
 
     defaultConfig {
         applicationId = "com.shift.vehicle"
@@ -52,4 +53,8 @@ kotlin {
 
 dependencies {
     implementation("com.google.zxing:core:3.5.4")
+    implementation("ai.pleos.playground:NaviHelper:3.0.5")
+    implementation("ai.pleos.playground:Vehicle:2.3.2")
+    implementation("ai.pleos.playground:TextToSpeech:3.3.1")
+    implementation("ai.pleos.playground:SpeechToText:3.3.1")
 }
