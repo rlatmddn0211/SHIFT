@@ -320,7 +320,7 @@ internal class VehicleWorkController(
 
     private fun openBluetooth() {
         try {
-            activity.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+            activity.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: ActivityNotFoundException) {
             result("휴대폰 음악", "Pleos의 시스템 설정에서 Bluetooth를 열어 주세요.")
         } catch (_: SecurityException) {

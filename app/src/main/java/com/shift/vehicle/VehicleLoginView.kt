@@ -147,10 +147,10 @@ internal class VehicleLoginView(
             if (wide) {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                addView(vehicleAndPin, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply {
+                addView(qr, LinearLayout.LayoutParams(size, size).apply {
                     marginEnd = px(48)
                 })
-                addView(qr, LinearLayout.LayoutParams(size, size))
+                addView(vehicleAndPin, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
             } else {
                 addView(qr, LinearLayout.LayoutParams(size, size).apply { gravity = Gravity.CENTER_HORIZONTAL })
                 append(vehicleAndPin, top = 28)
