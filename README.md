@@ -1,6 +1,6 @@
 # SHIFT
 
-SHIFT는 공용차를 배정받은 직원이 현대차의 Pleos Connect 차량 화면에서 방문 업무를 확인하고, 목적지를 내비게이션에 보내고, 방문 후 메모를 남기는 차량용 앱입니다.
+SHIFT는 공용차의 Pleos Connect에서 개인별 좌석 설정과 방문 업무를 불러오고, 내비게이션·메모를 휴대폰과 이어 쓰며, 교대 시 개인 세션을 정리하는 앱입니다.
 
 ## 공모전 제출 파일
 
@@ -19,6 +19,8 @@ SHIFT는 공용차를 배정받은 직원이 현대차의 Pleos Connect 차량 �
 - [결정 기록](docs/DECISIONS.md)
 - [공모전 작품 소개 초안](docs/SUBMISSION_DRAFT.md)
 - [공식 접수양식에 본문을 넣은 Word 초안](docs/SHIFT_application_draft.docx)
+- [기획서 열람용 PDF](docs/SHIFT_application_preview.pdf) · [작성 기준·최신 개발 현황·미작성 항목](docs/SUBMISSION_STATUS.md)
+- [공식 원본 접수양식](docs/templates/contest-application-consent.docx)
 - [Pleos 차량 화면 디자인·개발 가이드](docs/PLEOS_SCREEN_DESIGN.md)
 - [SHIFT v1.2 구현 목표 프롬프트](docs/SHIFT_V12_GOAL.md)
 - [편집 가능한 Figma와 클릭 시연](docs/SHIFT_V12_FIGMA.md)
@@ -26,7 +28,7 @@ SHIFT는 공용차를 배정받은 직원이 현대차의 Pleos Connect 차량 �
 - [Pleos v1.2 기능별 실행 결과](docs/SHIFT_V12_DEMO.md)
 - [모바일 웹앱과 Pleos 연동](docs/SHIFT_WEBAPP_PLEOS.md)
 
-Word 초안에는 작품 소개 본문이 들어 있습니다. 참가자 정보, 팀명, 전원 동의·서명과 최종 참고자료 링크는 제출 전에 작성합니다.
+2026년 11월 15일 최신 구현을 반영해 공식 양식의 1~8번을 채웠습니다. 참가 부문·인원·앱명은 반영했고 팀명·개인정보·전원 동의·서명·날짜와 시연 영상 링크는 제출 전에 작성합니다. 열람용 PDF는 DOCX 본문을 별도 인쇄 레이아웃으로 정리한 파일입니다.
 
 ## 제출용 APK 실행
 
@@ -83,7 +85,7 @@ Pleos Connect Emulator **2.1.0**, Android **API 34**, 전체 화면 **2560 × 14
 [공식 접수양식](https://appdevchallenge.auto-hmg.io/downloads/contest-application-consent.docx)을 내려받고 Python과 `lxml`이 있는 환경에서 실행합니다.
 
 ```powershell
-python tools/build_submission_docx.py '공식양식의 경로.docx'
+python tools/build_submission_docx.py
 ```
 
-`docs/SUBMISSION_DRAFT.md`의 1~7번 본문을 읽어 Word 초안을 다시 생성합니다. 참가자 정보와 서명은 팀이 작성합니다.
+`docs/SUBMISSION_DRAFT.md`의 1~8번과 저장된 공식 원본 양식으로 Word 초안을 다시 생성합니다. 원본 경로를 직접 인자로 전달할 수도 있습니다. 참가자 정보와 서명은 팀이 작성합니다. 열람용 PDF는 `python tools/render_submission_preview.py`로 갱신합니다.
