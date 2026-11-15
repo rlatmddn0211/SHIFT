@@ -1,27 +1,25 @@
-"""Fill the official contest project's fields from docs/SUBMISSION_DRAFT.md.
+"""Fill the official application from docs/SUBMISSION_DRAFT.md.
 
-Requires lxml. Participant details, consent and signatures stay blank.
-Usage: python tools/build_submission_docx.py PATH_TO_OFFICIAL_TEMPLATE.docx
+Requires lxml. Personal details, team name, consent, signatures and dates stay blank.
+Only the agreed participant category (university team of two) is prefilled.
 """
-
 from __future__ import annotations
 
 import argparse
 from copy import deepcopy
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 from zipfile import ZipFile
 
 from lxml import etree
 
-
 ROOT = Path(__file__).resolve().parents[1]
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 XML = "http://www.w3.org/XML/1998/namespace"
-NS = {"w": W}
-
-# These tag names in the official template do not all match their visible labels.
-# Map them to the visible numbered application sections, not their English names.
+NS = {"w": W, "r": R}
 SECTION_BY_TAG = {
     "app_summary": 1,
     "planning_background": 2,
@@ -30,7 +28,9 @@ SECTION_BY_TAG = {
     "pleos_plan": 5,
     "reference_files": 6,
     "reference_link": 7,
+    "shortform_link": 8,
 }
+LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)]+)\)")
 
 
 def plain_lines(section: str) -> list[tuple[str, bool]]:
@@ -44,115 +44,156 @@ def plain_lines(section: str) -> list[tuple[str, bool]]:
             continue
         if line.startswith("|") and line.endswith("|"):
             line = " / ".join(cell.strip() for cell in line.strip("|").split("|"))
-        line = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", line)
-        line = line.replace("**", "").replace("`", "")
-        lines.append((line, heading))
+        lines.append((line.replace("**", "").replace("`", ""), heading))
     return lines
 
 
-def build(template: Path, output: Path) -> None:
-    if template == output:
-        raise ValueError("Keep the original template and output at different paths.")
-    source = (ROOT / "docs" / "SUBMISSION_DRAFT.md").read_text(encoding="utf-8")
-    sections = {
-        int(number): body
-        for number, body in re.findall(
-            r"^## (\d+) [^\n]+\n(.*?)(?=^## |\Z)", source, flags=re.M | re.S
-        )
-    }
-    if not set(SECTION_BY_TAG.values()).issubset(sections):
-        raise ValueError("The source must contain numbered sections 1 through 7.")
+def append_run(parent, value: str, base_properties=None, *, bold=False, link=False):
+    run = etree.SubElement(parent, f"{{{W}}}r")
+    props = deepcopy(base_properties) if base_properties is not None else etree.Element(f"{{{W}}}rPr")
+    for element in props.findall("w:highlight", NS):
+        props.remove(element)
+    if bold and props.find("w:b", NS) is None:
+        etree.SubElement(props, f"{{{W}}}b")
+    if link:
+        for name, setting in (("color", "002C5F"), ("u", "single")):
+            element = props.find(f"w:{name}", NS)
+            if element is None:
+                element = etree.SubElement(props, f"{{{W}}}{name}")
+            element.set(f"{{{W}}}val", setting)
+    if len(props):
+        run.append(props)
+    text = etree.SubElement(run, f"{{{W}}}t")
+    text.set(f"{{{XML}}}space", "preserve")
+    text.text = value
+    return run
 
+
+def fill_field(control, section: str, relationships, next_id: list[int]) -> None:
+    content = control.find("w:sdtContent", NS)
+    if content is None:
+        raise ValueError("Missing official content-control area")
+    old_run = content.find("w:r", NS)
+    base = None if old_run is None else old_run.find("w:rPr", NS)
+    for child in list(content):
+        content.remove(child)
+    for index, (line, heading) in enumerate(plain_lines(section)):
+        if index:
+            etree.SubElement(etree.SubElement(content, f"{{{W}}}r"), f"{{{W}}}br")
+        start = 0
+        for match in LINK.finditer(line):
+            if match.start() > start:
+                append_run(content, line[start:match.start()], base, bold=heading)
+            rel_id = f"rIdSHIFT{next_id[0]}"
+            next_id[0] += 1
+            while relationships.find(f"{{{REL}}}Relationship[@Id='{rel_id}']") is not None:
+                rel_id = f"rIdSHIFT{next_id[0]}"
+                next_id[0] += 1
+            etree.SubElement(relationships, f"{{{REL}}}Relationship", {
+                "Id": rel_id, "Type": f"{R}/hyperlink", "Target": match.group(2), "TargetMode": "External",
+            })
+            hyperlink = etree.SubElement(content, f"{{{W}}}hyperlink", {f"{{{R}}}id": rel_id})
+            append_run(hyperlink, match.group(1), base, bold=heading, link=True)
+            start = match.end()
+        if start < len(line) or not line:
+            append_run(content, line[start:], base, bold=heading)
+    properties = control.find("w:sdtPr", NS)
+    if properties is not None:
+        # An inline rich-text control supports native, clickable hyperlinks.
+        for name in ("showingPlcHdr", "text"):
+            for element in properties.findall(f"w:{name}", NS):
+                properties.remove(element)
+    for parent in control.iterancestors():
+        if parent.tag == f"{{{W}}}tr":
+            row_properties = parent.find("w:trPr", NS)
+            if row_properties is not None:
+                for element in row_properties.findall("w:cantSplit", NS):
+                    row_properties.remove(element)
+            break
+
+
+def fill_known_registration(root) -> None:
+    for paragraph in root.findall(".//w:p", NS):
+        values = paragraph.findall(".//w:t", NS)
+        old = "".join(value.text or "" for value in values)
+        new = old
+        if old.startswith("앱명 / 프로젝트명:"):
+            new = "앱명 / 프로젝트명: SHIFT"
+        elif old.startswith("참가 단위:"):
+            new = old.replace("□ 팀", "☑ 팀")
+        elif old.startswith("참가 부문:"):
+            new = old.replace("□ 대학(원)생", "☑ 대학(원)생")
+        elif old.startswith("참가 인원:"):
+            new = re.sub(r"_+", "2", old)
+        if new != old and values:
+            values[0].text = new
+            for value in values[1:]:
+                value.text = ""
+
+
+def serialize(root) -> bytes:
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def build(template: Path, output: Path, source_path: Path) -> None:
+    if template == output:
+        raise ValueError("Keep the official original and filled draft separate")
+    source = source_path.read_text(encoding="utf-8-sig")
+    sections = {int(number): body for number, body in re.findall(
+        r"^## (\d+) [^\n]+\n(.*?)(?=^## |\Z)", source, flags=re.M | re.S
+    )}
+    if not set(SECTION_BY_TAG.values()).issubset(sections):
+        raise ValueError("Source must contain numbered sections 1 through 8")
     with ZipFile(template) as original:
         root = etree.fromstring(original.read("word/document.xml"))
+        relationships = etree.fromstring(original.read("word/_rels/document.xml.rels"))
         controls = {}
         for control in root.findall(".//w:sdt", NS):
             tag = control.find("w:sdtPr/w:tag", NS)
             if tag is not None:
                 controls[tag.get(f"{{{W}}}val")] = control
         if not set(SECTION_BY_TAG).issubset(controls):
-            raise ValueError("The official template's expected fields were not found.")
-
+            raise ValueError("Official template fields not found")
+        next_id = [1]
         for tag, number in SECTION_BY_TAG.items():
-            control = controls[tag]
-            content = control.find("w:sdtContent", NS)
-            if content is None:
-                raise ValueError(f"Missing content area: {tag}")
-            # Official fields are inline plain-text controls. Use runs and line
-            # breaks, preserving the surrounding paragraphs, tables and styles.
-            old_run = content.find("w:r", NS)
-            run_properties = None if old_run is None else old_run.find("w:rPr", NS)
-            for child in list(content):
-                content.remove(child)
-            for index, (line, heading) in enumerate(plain_lines(sections[number])):
-                run = etree.SubElement(content, f"{{{W}}}r")
-                props = (
-                    deepcopy(run_properties)
-                    if run_properties is not None
-                    else etree.Element(f"{{{W}}}rPr")
-                )
-                # Placeholder highlighting is an editing cue in the template.
-                highlight = props.find("w:highlight", NS)
-                if highlight is not None:
-                    props.remove(highlight)
-                if heading:
-                    etree.SubElement(props, f"{{{W}}}b")
-                if len(props):
-                    run.append(props)
-                if index:
-                    etree.SubElement(run, f"{{{W}}}br")
-                text = etree.SubElement(run, f"{{{W}}}t")
-                text.set(f"{{{XML}}}space", "preserve")
-                text.text = line
-            properties = control.find("w:sdtPr", NS)
-            if properties is not None:
-                for placeholder in properties.findall("w:showingPlcHdr", NS):
-                    properties.remove(placeholder)
-                text_type = properties.find("w:text", NS)
-                if text_type is not None:
-                    text_type.set(f"{{{W}}}multiLine", "1")
-            # Let long project answers continue on the following page. Keep the
-            # original registration and consent tables untouched.
-            row = next(
-                (parent for parent in control.iterancestors() if parent.tag == f"{{{W}}}tr"),
-                None,
-            )
-            if row is not None:
-                row_properties = row.find("w:trPr", NS)
-                if row_properties is not None:
-                    for setting in row_properties.findall("w:cantSplit", NS):
-                        row_properties.remove(setting)
-
-        # Fill only the app name; never invent team names, personal data, dates
-        # or signatures in the registration/consent sections.
-        for paragraph in root.findall(".//w:p", NS):
-            values = paragraph.findall(".//w:t", NS)
-            if "".join(value.text or "" for value in values).startswith("앱명 / 프로젝트명:"):
-                for value in values:
-                    if value.text and "_" in value.text:
-                        value.text = re.sub(r"_+", "SHIFT", value.text)
-                        break
-
-        document = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+            fill_field(controls[tag], sections[number], relationships, next_id)
+        fill_known_registration(root)
+        replacements = {"word/document.xml": serialize(root),
+                        "word/_rels/document.xml.rels": serialize(relationships)}
+        if "docProps/core.xml" in original.namelist():
+            core = etree.fromstring(original.read("docProps/core.xml"))
+            core_ns = {"dc": "http://purl.org/dc/elements/1.1/",
+                       "cp": "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
+                       "dcterms": "http://purl.org/dc/terms/"}
+            metadata = {"dc:title": "SHIFT 공모전 기획서 초안", "dc:creator": "SHIFT",
+                        "cp:lastModifiedBy": "SHIFT", "dc:description": "Official contest application draft",
+                        "cp:revision": "1", "dcterms:modified": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+            for query, value in metadata.items():
+                element = core.find(query, core_ns)
+                if element is None:
+                    prefix, local = query.split(":")
+                    element = etree.SubElement(core, f"{{{core_ns[prefix]}}}{local}")
+                element.text = value
+            replacements["docProps/core.xml"] = serialize(core)
         output.parent.mkdir(parents=True, exist_ok=True)
         with ZipFile(output, "w") as target:
             for entry in original.infolist():
-                target.writestr(
-                    entry,
-                    document if entry.filename == "word/document.xml" else original.read(entry),
-                )
-
+                target.writestr(entry, replacements.get(entry.filename, original.read(entry)))
     with ZipFile(output) as result:
         if result.testzip() is not None:
-            raise ValueError("Generated DOCX failed its archive integrity check.")
-        etree.fromstring(result.read("word/document.xml"))
+            raise ValueError("DOCX archive integrity check failed")
+        checked = etree.fromstring(result.read("word/document.xml"))
+        for tag in SECTION_BY_TAG:
+            assert checked.xpath("//w:sdt[w:sdtPr/w:tag/@w:val=$tag]//w:t[text()]", namespaces=NS, tag=tag), tag
     print(f"Created {output}")
-    print("Project sections 1–7 filled. Participant fields and consent/signatures require completion.")
+    print("All eight project fields filled; university team of two prefilled.")
+    print("Team name, personal details, consent and signatures require team completion.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("template", type=Path)
-    parser.add_argument("--output", type=Path, default=ROOT / "docs" / "SHIFT_application_draft.docx")
-    arguments = parser.parse_args()
-    build(arguments.template.resolve(), arguments.output.resolve())
+    parser.add_argument("template", type=Path, nargs="?", default=ROOT / "docs/templates/contest-application-consent.docx")
+    parser.add_argument("--output", type=Path, default=ROOT / "docs/SHIFT_application_draft.docx")
+    parser.add_argument("--source", type=Path, default=ROOT / "docs/SUBMISSION_DRAFT.md")
+    args = parser.parse_args()
+    build(args.template.resolve(), args.output.resolve(), args.source.resolve())
