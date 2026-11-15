@@ -14,6 +14,10 @@ SHIFT는 **여러 직원이 번갈아 쓰는 회사 공용차에서, 로그인·
 
 *Pleos Connect 에뮬레이터의 실행 화면입니다. 직원과 방문 업무는 시연용 예시 데이터입니다.*
 
+[![SHIFT 공개 웹앱의 첫 화면. 프로젝트 소개와 QR·PIN 시연 시작 버튼을 표시합니다.](docs/images/shift-web-demo-home.png)](https://shift-pleos-demo.pages.dev/)
+
+*[공개 웹앱](https://shift-pleos-demo.pages.dev/)의 실제 첫 화면입니다. 이미지를 누르면 브라우저에서 시연을 시작할 수 있습니다.*
+
 ## 어디부터 보면 되나요?
 
 | 하고 싶은 일 | 시작할 곳 | 준비할 것 |
