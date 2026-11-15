@@ -20,7 +20,7 @@ Pleos Connect Emulator 2.1.0, Android API 34, 2560 × 1440 px, 160 dpi, 가로 �
 
 ## 다시 실행
 
-- 기본 명령은 [README 실행 절차](../README.md#pleos에서-화면-실행)를 따른다. 내비 시연은 서버 환경에 `SHIFT_ENABLE_NAV_TEST=1`을 설정해 A의 **42dot · 내비 시험**을 연다.
+- 기본 명령은 [README 실행 절차](../README.md#제출용-apk-실행)를 따른다. 내비 시연은 서버 환경에 `SHIFT_ENABLE_NAV_TEST=1`을 설정해 A의 **42dot · 내비 시험**을 연다.
 - 주행 상태는 **Pleos Virtual Console → Motion → Gear Selection**에서 확인하고 시트 위치는 SHIFT 시트 화면에서 읽는다. 기어와 `CarUxRestrictions`가 모두 주차로 확인될 때만 차량 제어를 연다. [Pleos Virtual Console](https://document.pleos.ai/en/docs/pleos-only/app-test-guide/virtual-console-guide)
 - 개발 빌드에서 STT 엔진을 따로 시험하려면 `app/src/debug/assets/shift-stt-fixture.pcm`에 16 kHz, 16-bit, mono PCM 시험 음성을 두고 `assembleDebug`를 실행한다. **음성 메모 → 시험 음성 인식**이 나타난다. [Pleos PCM 입력](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/SpeechToText/sending-audio-data)
-- 업무 계정과 AI 제공자의 실제 요청은 [업무·개인 설정 문서](SHIFT_WORKSPACE.md)의 시험 테넌트, 앱 등록, HTTPS 제공자 설정을 사용한다. 시제품은 로컬 파일과 메모리 세션을 사용하며 기획안의 AWS 및 PostgreSQL 배포는 구성하지 않았다.
+- 업무 계정과 AI 제공자의 실제 요청은 [업무·개인 설정 문서](SHIFT_WORKSPACE.md)의 시험 테넌트, 앱 등록, HTTPS 제공자 설정을 사용한다. 현재 시제품은 로컬 파일과 메모리 세션을 사용한다.

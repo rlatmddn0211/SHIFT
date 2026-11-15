@@ -4,7 +4,7 @@ Git에서 확인한 웹 시안은 `607b691`이다. 방문 후 메모, QR 승인,
 
 ## 실행
 
-프로젝트 루트에서 아래 명령을 실행한다. Pleos 앱 설치와 Android 휴대폰의 USB 포트 전달은 [README의 실행 절차](../README.md#pleos에서-화면-실행)를 따른다.
+프로젝트 루트에서 아래 명령을 실행한다. Pleos 앱 설치와 Android 휴대폰의 USB 포트 전달은 [README의 실행 절차](../README.md#제출용-apk-실행)를 따른다.
 
 ```powershell
 npm --prefix webapp ci
