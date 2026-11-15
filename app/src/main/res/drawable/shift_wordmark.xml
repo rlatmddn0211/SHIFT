@@ -1,0 +1,23 @@
+<!-- SHIFT web wordmark, transformed from prototype/src/assets/shift-logo.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="166dp" android:height="29dp"
+    android:viewportWidth="640" android:viewportHeight="112">
+    <path android:fillColor="#AACAE6"
+        android:pathData="M46,5L118,5L112.899,29L52.899,29L49.71,44L87.71,44L103.672,63L98.57,87L76.744,105L6.744,105L11.846,81L69.846,81L73.034,66L37.034,66L20.86,48L26.174,23Z" />
+    <path android:fillColor="#AACAE6"
+        android:pathData="M136,5L162,5L154.135,42L190.135,42L198,5L224,5L202.744,105L176.744,105L184.609,68L148.609,68L140.744,105L114.744,105Z" />
+    <path android:fillColor="#AACAE6"
+        android:pathData="M246,5L272,5L250.744,105L224.744,105Z" />
+    <path android:fillColor="#AACAE6"
+        android:pathData="M294,5L380,5L374.899,29L314.899,29L311.073,47L357.073,47L351.971,71L305.971,71L298.744,105L272.744,105Z" />
+    <path android:fillColor="#AACAE6"
+        android:pathData="M402,5L502,5L496.899,29L459.899,29L443.744,105L417.744,105L433.899,29L396.899,29Z" />
+    <path android:fillColor="#AACAE6"
+        android:pathData="M514,5L563,5L550.874,15L509.874,15Z" />
+    <path android:fillColor="#AACAE6"
+        android:pathData="M508.599,21L598.599,21L584.474,31L504.474,31Z" />
+    <path android:fillColor="#AACAE6"
+        android:pathData="M503.198,37L565.198,37L552.073,47L499.073,47Z" />
+    <path android:fillColor="#AACAE6"
+        android:pathData="M609.599,21L629.599,21L615.474,31L605.474,31Z" />
+</vector>

@@ -1,0 +1,9 @@
+<!-- SHIFT web favicon, transformed from prototype/public/favicon.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="96" android:viewportHeight="96">
+    <path android:fillColor="#002C5F"
+        android:pathData="M22,0H74A22,22 0 0,1 96,22V74A22,22 0 0,1 74,96H22A22,22 0 0,1 0,74V22A22,22 0 0,1 22,0Z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M31.36,22L68.8,22L66.147,34.48L34.947,34.48L33.289,42.28L53.049,42.28L61.349,52.16L58.697,64.64L47.347,74L10.947,74L13.6,61.52L43.76,61.52L45.418,53.72L26.698,53.72L18.287,44.36L21.05,31.36Z" />
+</vector>
